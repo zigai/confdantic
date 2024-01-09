@@ -43,8 +43,12 @@ class Confen(BaseModel):
         match ext:
             case "toml" | "tml":
                 return cls.load_toml(filepath)
+            case "yaml" | "yml":
+                return cls.load_yaml(filepath)
+            case "json":
+                return cls.load_json(filepath)
             case _:
-                ...
+                raise ValueError(f"Unknown file extension: {ext}")
 
     @classmethod
     def load_toml(cls, filepath: str):

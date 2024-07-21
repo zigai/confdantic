@@ -1,16 +1,17 @@
 [project]
 name = "confen"
-version = "0.0.1"
+version = "0.0.2"
 description = ""
 authors = [{ name = "Žiga Ivanšek", email = "ziga.ivansek@gmail.com" }]
 license = { file = "LICENSE.txt" }
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
-    "pydantic>=2.5.2",
-    "objinspect==0.2.9",
+    "pydantic>=2.8.2",
+    "objinspect==0.2.12",
     "tomlkit==0.12.3",
     "toml==0.10.2",
+    "ruamel.yaml>=0.18.6",
 ]
 
 classifiers = [

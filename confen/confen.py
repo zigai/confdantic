@@ -1,12 +1,15 @@
-from pydantic import BaseModel, Field
-import tomlkit
-from tomlkit.items import Table
-from pydantic.fields import FieldInfo
-from objinspect.util import get_literal_choices, is_literal
-import os
-import toml
 import json
-import yaml
+import os
+import typing as T
+
+import toml
+import tomlkit
+from objinspect.typing import get_literal_choices, is_direct_literal
+from pydantic import BaseModel, ConfigDict
+from pydantic.fields import FieldInfo
+from ruamel.yaml import YAML
+from ruamel.yaml.comments import CommentedMap
+from tomlkit.items import Table
 
 
 def sanitize_comment(comment: str) -> str:
@@ -14,8 +17,21 @@ def sanitize_comment(comment: str) -> str:
     return sanitized
 
 
-def get_comment(field: FieldInfo, add_choices: bool = True):
-    if is_literal(field.annotation) and add_choices:
+def file_ext(filepath: str):
+    ext = os.path.splitext(filepath)[1].lower()
+    if ext.startswith("."):
+        ext = ext[1:]
+    return ext
+
+
+def get_comment(field: FieldInfo, add_choices: bool = True) -> str | None:
+    """
+    Generate a comment string for a Pydantic field, including description and choices if they exist.
+    This function creates a comment string based on the field's description and, if the field
+    is a Literal type, its possible choices.
+    """
+
+    if is_direct_literal(field.annotation) and add_choices:
         choices = list(get_literal_choices(field.annotation))
         if not choices:
             choices_str = None
@@ -32,14 +48,36 @@ def get_comment(field: FieldInfo, add_choices: bool = True):
 
 
 class Confen(BaseModel):
-    class Config:
-        validate_assignment = True
+    """
+    A class for serializing and deserializing Pydantic models to and from files.
+    This class extends Pydantic's BaseModel to provide enhanced file I/O capabilities,
+    supporting TOML, YAML, and JSON formats with optional comment preservation.
+    """
+
+    model_config = ConfigDict(validate_assignment=True)
 
     @classmethod
     def load(cls, filepath: str):
+        """
+        Load a Pydantic model from a file.
+
+        This method automatically detects the file format based on the file extension
+        and uses the appropriate loading method.
+
+        Args:
+            filepath (str): The path to the file containing the serialized model.
+
+        Returns:
+            Confen: An instance of the Confen class with the loaded data.
+
+        Raises:
+            FileNotFoundError: If the specified file does not exist.
+            ValueError: If the file extension is not recognized.
+        """
+
         if not os.path.exists(filepath):
             raise FileNotFoundError(filepath)
-        _, ext = os.path.splitext(filepath)
+        ext = file_ext(filepath)
         match ext:
             case "toml" | "tml":
                 return cls.load_toml(filepath)
@@ -49,6 +87,64 @@ class Confen(BaseModel):
                 return cls.load_json(filepath)
             case _:
                 raise ValueError(f"Unknown file extension: {ext}")
+
+    def save(self, filepath: str, overwrite: bool = True, comments: bool = True):
+        """
+        Save the configuration to a file.
+
+        This method automatically detects the file format based on the file extension
+        and uses the appropriate saving method.
+
+        Args:
+            filepath (str): The path where the configuration file will be saved.
+            overwrite (bool, optional): Whether to overwrite the file if it already exists. Defaults to True.
+            comments (bool, optional): Whether to include comments in the saved file. Defaults to True.
+
+        Raises:
+            FileExistsError: If the file already exists and overwrite is False.
+            ValueError: If the file extension is not recognized.
+        """
+
+        if os.path.exists(filepath) and not overwrite:
+            raise FileExistsError(filepath)
+
+        ext = file_ext(filepath)
+        match ext:
+            case "toml" | "tml":
+                return self.save_toml(filepath, overwrite=overwrite, comments=comments)
+            case "yaml" | "yml":
+                return self.save_yaml(filepath=filepath, overwrite=overwrite)
+            case "json":
+                return self.save_json(filepath, overwrite=overwrite)
+            case _:
+                raise ValueError(f"Unknown file extension: {ext}")
+
+    def _add_comments_to_yaml(self, data: dict[str, T.Any], prefix: str = "") -> dict[str, T.Any]:
+        comments_map = CommentedMap(data)
+        for name, field in self.model_fields.items():
+            key = f"{prefix}{name}"
+            comment = get_comment(field)
+            if comment:
+                comments_map.yaml_add_eol_comment(comment, key)
+            if isinstance(data.get(name), dict):
+                try:
+                    is_base_model = issubclass(field.annotation, BaseModel)
+                except TypeError:
+                    is_base_model = False
+                if is_base_model:
+                    comments_map[name] = self._add_comments_to_yaml(data[name], f"{key}.")
+        return comments_map
+
+    @classmethod
+    def load_yaml(cls, filepath: str):
+        if not os.path.exists(filepath):
+            raise FileNotFoundError(filepath)
+
+        yaml = YAML()
+        with open(filepath, "r") as f:
+            data = yaml.load(f)
+
+        return cls.model_validate(data)
 
     @classmethod
     def load_toml(cls, filepath: str):
@@ -60,59 +156,42 @@ class Confen(BaseModel):
         with open(filepath, "r") as f:
             return cls.model_validate(json.load(f))
 
-    @classmethod
-    def load_yaml(cls, filepath: str):
-        with open(filepath, "r") as f:
-            return cls.model_validate(yaml.safe_load(f))
-
-    def save(self, filepath: str, overwrite: bool = True, comments: bool = True):
-        if os.path.exists(filepath) and not overwrite:
-            raise FileExistsError(filepath)
-        _, ext = os.path.splitext(filepath)
-        match ext:
-            case "toml" | "tml":
-                return self.save_toml(filepath, overwrite=overwrite, comments=comments)
-            case "yaml" | "yml":
-                return self.save_yaml(filepath=filepath, overwrite=overwrite)
-            case "json":
-                return self.save_json(filepath, overwrite=overwrite)
-            case _:
-                raise ValueError(f"Unknown file extension: {ext}")
-
     def save_toml(self, filepath: str, overwrite: bool = True, comments: bool = True):
         if os.path.exists(filepath) and not overwrite:
             raise FileExistsError(filepath)
         data = self.model_dump()
         toml_string = tomlkit.dumps(data)
-        toml_document = tomlkit.loads(toml_string)
+        toml_doc = tomlkit.loads(toml_string)
 
         if not comments:
             with open(filepath, "w") as f:
-                tomlkit.dump(toml_document, f)
+                tomlkit.dump(toml_doc, f)
                 return
 
         for name, field in self.model_fields.items():
-            item = toml_document.item(name)
+            item = toml_doc.item(name)
             comment = get_comment(field)
             if comment:
                 item.comment(comment)
 
             try:
-                is_base_model = issubclass(field.annotation, BaseModel)
+                is_base_model = is_base_model = isinstance(field.annotation, type) and issubclass(
+                    field.annotation, BaseModel
+                )
             except TypeError:
                 is_base_model = False
 
             if is_base_model:
                 subfield = field.annotation
                 for subfname, f in subfield.model_fields.items():
-                    table: Table = toml_document[name]
+                    table: Table = toml_doc[name]
                     subitem = table.get(subfname)
                     comment = get_comment(f)
                     if comment:
                         subitem.comment(comment)
 
         with open(filepath, "w") as f:
-            tomlkit.dump(toml_document, f)
+            tomlkit.dump(toml_doc, f)
 
     def save_json(self, filepath: str, overwrite: bool = True):
         if os.path.exists(filepath) and not overwrite:
@@ -121,9 +200,17 @@ class Confen(BaseModel):
         with open(filepath, "w") as f:
             json.dump(data, f)
 
-    def save_yaml(self, filepath: str, overwrite: bool = True):
+    def save_yaml(self, filepath: str, overwrite: bool = True, comments: bool = True):
         if os.path.exists(filepath) and not overwrite:
             raise FileExistsError(filepath)
+
+        yaml = YAML()
+        yaml.indent(mapping=2, sequence=4, offset=2)
+        yaml.preserve_quotes = True
+
         data = self.model_dump()
+        if comments:
+            data = self._add_comments_to_yaml(data)
+
         with open(filepath, "w") as f:
-            yaml.safe_dump(data, f)
+            yaml.dump(data, f)

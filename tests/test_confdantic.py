@@ -5,7 +5,7 @@ import toml
 import yaml
 from pydantic import BaseModel, Field
 
-from confen import Confdantic
+from confdantic import Confdantic
 
 
 class ExampleModel(Confdantic):

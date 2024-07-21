@@ -1,1 +1,1 @@
-from confen.confen import Confdantic
+from confdantic.confen import Confdantic

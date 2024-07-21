@@ -5,6 +5,9 @@
 [![Downloads](https://static.pepy.tech/badge/confdantic)](https://pepy.tech/project/confdantic)
 [![license](https://img.shields.io/github/license/zigai/confdantic.svg)](https://github.com/zigai/confdantic/blob/master/LICENSE)
 
+`Confdantic` is a Python library that enhances Pydantic's capabilities for working with JSON, YAML, and TOML formats.
+It preserves field descriptions as comments when serializing to YAML or TOML, making it great for generating user-friendly configuration files.
+
 ## Installation
 #### From PyPi
 ```
@@ -18,7 +21,7 @@ pip install git+https://github.com/zigai/confdantic.git
 ```python
 from typing import Literal
 from pydantic import Field
-from confen import Confdantic
+from confdantic import Confdantic
 
 class DatabaseConfig(Confdantic):
     host: str = Field(

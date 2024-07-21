@@ -1,7 +1,7 @@
 [project]
 name = "confdantic"
 version = "0.0.2"
-description = ""
+description = "Confdantic is a Python library that enhances Pydantic's capabilities for working with JSON, YAML, and TOML formats. It preserves field descriptions as comments when serializing to YAML or TOML, making it great for generating user-friendly configuration files."
 authors = [{ name = "Žiga Ivanšek", email = "ziga.ivansek@gmail.com" }]
 license = { file = "LICENSE.txt" }
 readme = "README.md"
@@ -26,7 +26,16 @@ classifiers = [
     "Topic :: Software Development :: Libraries :: Python Modules",
 ]
 
-keywords = []
+keywords = [
+    "config",
+    "yaml",
+    "toml",
+    "configuration-management",
+    "yaml-configuration",
+    "pydantic",
+    "pydantic-configuration",
+    "toml-configuration",
+]
 
 [project.optional-dependencies]
 test = ["pytest"]

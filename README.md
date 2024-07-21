@@ -1,21 +1,21 @@
-# Confen
+# Confdantic
 
 ## Installation
 #### From PyPi
 ```
-pip install 
+pip install confdantic
 ```
 #### From source
 ```
-pip install git+https://github.com/zigai/.git
+pip install git+https://github.com/zigai/confdantic.git
 ```
 
 ```python
 from typing import Literal
 from pydantic import Field
-from confen import Confen
+from confen import Confdantic
 
-class DatabaseConfig(Confen):
+class DatabaseConfig(Confdantic):
     host: str = Field(
         "localhost",
         description="The hostname or IP address of the database server",
@@ -27,7 +27,7 @@ class DatabaseConfig(Confen):
     username: str
     password: str
 
-class ApplicationConfig(Confen):
+class ApplicationConfig(Confdantic):
     debug: bool = Field(False, description="Enable debug mode")
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = Field(
         "INFO", description="Logging level"

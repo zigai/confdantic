@@ -47,7 +47,7 @@ def get_comment(field: FieldInfo, add_choices: bool = True) -> str | None:
     return comment
 
 
-class Confen(BaseModel):
+class Confdantic(BaseModel):
     """
     A class for serializing and deserializing Pydantic models to and from files.
     This class extends Pydantic's BaseModel to provide enhanced file I/O capabilities,
@@ -235,3 +235,6 @@ class Confen(BaseModel):
 
         with open(filepath, "w") as f:
             yaml.dump(data, f)
+
+
+__all__ = ["Confdantic"]

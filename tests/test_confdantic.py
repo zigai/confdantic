@@ -5,10 +5,10 @@ import toml
 import yaml
 from pydantic import BaseModel, Field
 
-from confen import Confen
+from confen import Confdantic
 
 
-class ExampleModel(Confen):
+class ExampleModel(Confdantic):
     name: str
     age: int
     hobbies: list[str] = Field(default_factory=list)
@@ -120,7 +120,7 @@ def test_save_yaml_with_comments(temp_dir, sample_data):
     name_description = "The person's name"
     age_description = "The person's age"
 
-    class CommentedModel(Confen):
+    class CommentedModel(Confdantic):
         name: str = Field(..., description=name_description)
         age: int = Field(..., description=age_description)
 
@@ -139,7 +139,7 @@ def test_save_toml_with_comments(temp_dir, sample_data):
     name_description = "The person's name"
     age_description = "The person's age"
 
-    class CommentedModel(Confen):
+    class CommentedModel(Confdantic):
         name: str = Field(..., description=name_description)
         age: int = Field(..., description=age_description)
 
@@ -159,7 +159,7 @@ def test_nested_model_save_load(temp_dir):
         street: str
         city: str
 
-    class Person(Confen):
+    class Person(Confdantic):
         name: str
         address: Address
 

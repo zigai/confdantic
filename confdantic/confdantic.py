@@ -56,6 +56,37 @@ class Confdantic(BaseModel):
 
     model_config = ConfigDict(validate_assignment=True)
 
+    def to_commented_yaml(self) -> CommentedMap | CommentedSeq:
+        """
+        Converts the Confdantic instance to a CommentedMap or CommentedSeq for YAML serialization.
+        """
+        return self._to_commented_yaml(self)
+
+    def _to_commented_yaml(self, obj: T.Any) -> CommentedMap | CommentedSeq | T.Any:
+        if issubclass(obj.__class__, BaseModel):
+            cm = CommentedMap()
+            for field_name, field in obj.model_fields.items():
+                value = getattr(obj, field_name)
+                cm[field_name] = self._to_commented_yaml(value)
+
+                comment = get_comment(field)
+                if comment:
+                    cm.yaml_add_eol_comment(comment, field_name)
+
+            return cm
+        elif isinstance(obj, list):
+            cs = CommentedSeq()
+            for item in obj:
+                cs.append(self._to_commented_yaml(item))
+            return cs
+        elif isinstance(obj, dict):
+            cm = CommentedMap()
+            for key, value in obj.items():
+                cm[key] = self._to_commented_yaml(value)
+            return cm
+        else:
+            return obj
+
     @classmethod
     def load(cls, filepath: str):
         """
@@ -118,43 +149,6 @@ class Confdantic(BaseModel):
                 return self.save_json(filepath, overwrite=overwrite)
             case _:
                 raise ValueError(f"Unknown file extension: {ext}")
-
-    def _add_comments_to_yaml(self, data: T.Any, model: type[BaseModel]) -> T.Any:
-        if isinstance(data, dict):
-            comments_map = CommentedMap(data)
-            for name, field in model.model_fields.items():
-                if name not in data:
-                    continue
-
-                comment = get_comment(field)
-                if comment:
-                    comments_map.yaml_add_eol_comment(comment, name)
-
-                if isinstance(data[name], dict):
-                    try:
-                        is_base_model = issubclass(field.annotation, BaseModel)
-                    except TypeError:
-                        is_base_model = False
-
-                    if is_base_model:
-                        comments_map[name] = self._add_comments_to_yaml(
-                            data[name], field.annotation
-                        )
-                elif isinstance(data[name], list):
-                    comments_map[name] = self._add_comments_to_yaml(data[name], field.annotation)
-            return comments_map
-        elif isinstance(data, list):
-            comments_seq = CommentedSeq(data)
-            for i, item in enumerate(data):
-                if isinstance(item, dict):
-                    try:
-                        item_type = model.__args__[0] if hasattr(model, "__args__") else model
-                        comments_seq[i] = self._add_comments_to_yaml(item, item_type)
-                    except (AttributeError, IndexError):
-                        pass
-            return comments_seq
-        else:
-            return data
 
     @classmethod
     def load_yaml(cls, filepath: str):
@@ -231,8 +225,9 @@ class Confdantic(BaseModel):
 
         data = self.model_dump()
         if comments:
-            data = self._add_comments_to_yaml(data, type(self))
-
+            data = self.to_commented_yaml()
+        else:
+            data = self.model_dump()
         with open(filepath, "w") as f:
             yaml.dump(data, f)
 

@@ -24,7 +24,9 @@ def file_ext(filepath: str):
     return ext
 
 
-def get_comment(field: FieldInfo, add_choices: bool = True) -> str | None:
+def get_comment(
+    field: FieldInfo, format: T.Literal["json", "yaml", "toml"], add_choices: bool = True
+) -> str | None:
     """
     Generate a comment string for a Pydantic field, including description and choices if they exist.
     This function creates a comment string based on the field's description and, if the field
@@ -36,7 +38,16 @@ def get_comment(field: FieldInfo, add_choices: bool = True) -> str | None:
         if not choices:
             choices_str = None
         else:
-            choices_str = "choices: " + ", ".join(choices)
+            formated_choices = []
+            for i in choices:
+                if i is None:
+                    if format in ["json", "yaml"]:
+                        formated_choices.append("null")
+                    else:
+                        formated_choices.append("''")
+                else:
+                    formated_choices.append(str(i))
+            choices_str = "choices: " + ", ".join(formated_choices)
     else:
         choices_str = None
     if not field.description:
@@ -69,7 +80,7 @@ class Confdantic(BaseModel):
                 value = getattr(obj, field_name)
                 cm[field_name] = self._to_commented_yaml(value)
 
-                comment = get_comment(field)
+                comment = get_comment(field, format="yaml")
                 if comment:
                     cm.yaml_add_eol_comment(comment, field_name)
 
@@ -185,7 +196,7 @@ class Confdantic(BaseModel):
 
         for name, field in self.model_fields.items():
             item = toml_doc.item(name)
-            comment = get_comment(field)
+            comment = get_comment(field, format="toml")
             if comment:
                 item.comment(comment)
 
@@ -201,7 +212,7 @@ class Confdantic(BaseModel):
                 for subfname, f in subfield.model_fields.items():
                     table: Table = toml_doc[name]
                     subitem = table.get(subfname)
-                    comment = get_comment(f)
+                    comment = get_comment(f, format="toml")
                     if comment:
                         subitem.comment(comment)
 

@@ -8,7 +8,7 @@ readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
     "pydantic>=2.8.2",
-    "objinspect==0.2.12",
+    "objinspect>=0.2.13",
     "tomlkit==0.12.3",
     "toml==0.10.2",
     "ruamel.yaml>=0.18.6",

@@ -1,6 +1,6 @@
 import json
 import os
-import typing as T
+from typing import Literal
 
 import toml
 import tomlkit
@@ -25,7 +25,7 @@ def file_ext(filepath: str):
 
 
 def get_comment(
-    field: FieldInfo, format: T.Literal["json", "yaml", "toml"], add_choices: bool = True
+    field: FieldInfo, format: Literal["json", "yaml", "toml"], add_choices: bool = True
 ) -> str | None:
     """
     Generate a comment string for a Pydantic field, including description and choices if they exist.
@@ -182,7 +182,7 @@ class Confdantic(BaseModel):
         with open(filepath, "r") as f:
             return cls.model_validate(json.load(f))
 
-    def save_toml(self, filepath: str, overwrite: bool = True, comments: bool = True):
+    def save_toml(self, filepath: str, overwrite: bool = True, comments: bool = True) -> None:
         if os.path.exists(filepath) and not overwrite:
             raise FileExistsError(filepath)
         data = self.model_dump()
@@ -219,14 +219,14 @@ class Confdantic(BaseModel):
         with open(filepath, "w") as f:
             tomlkit.dump(toml_doc, f)
 
-    def save_json(self, filepath: str, overwrite: bool = True):
+    def save_json(self, filepath: str, overwrite: bool = True) -> None:
         if os.path.exists(filepath) and not overwrite:
             raise FileExistsError(filepath)
         data = self.model_dump()
         with open(filepath, "w") as f:
             json.dump(data, f)
 
-    def save_yaml(self, filepath: str, overwrite: bool = True, comments: bool = True):
+    def save_yaml(self, filepath: str, overwrite: bool = True, comments: bool = True) -> None:
         if os.path.exists(filepath) and not overwrite:
             raise FileExistsError(filepath)
 

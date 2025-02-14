@@ -1,6 +1,6 @@
 import json
 import os
-from typing import Literal
+from typing import Any, Literal
 
 import toml
 import tomlkit
@@ -73,7 +73,7 @@ class Confdantic(BaseModel):
         """
         return self._to_commented_yaml(self)
 
-    def _to_commented_yaml(self, obj: T.Any) -> CommentedMap | CommentedSeq | T.Any:
+    def _to_commented_yaml(self, obj: Any) -> CommentedMap | CommentedSeq | Any:
         if issubclass(obj.__class__, BaseModel):
             cm = CommentedMap()
             for field_name, field in obj.model_fields.items():
@@ -207,7 +207,7 @@ class Confdantic(BaseModel):
             except TypeError:
                 is_base_model = False
 
-            if is_base_model:
+            if is_base_model and field.annotation:
                 subfield = field.annotation
                 for subfname, f in subfield.model_fields.items():
                     table: Table = toml_doc[name]

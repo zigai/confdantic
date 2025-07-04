@@ -1,6 +1,6 @@
 [project]
 name = "confdantic"
-version = "0.0.6"
+version = "0.0.7"
 description = "Confdantic is a Python library that enhances Pydantic's capabilities for working with JSON, YAML, and TOML formats. It preserves field descriptions as comments when serializing to YAML or TOML, making it great for generating user-friendly configuration files."
 authors = [{ name = "Žiga Ivanšek", email = "ziga.ivansek@gmail.com" }]
 license = { file = "LICENSE.txt" }
@@ -8,7 +8,7 @@ readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
     "pydantic>=2.8.2",
-    "objinspect>=0.2.15",
+    "objinspect>=0.2.16",
     "tomlkit>=0.12.3",
     "toml==0.10.2",
     "ruamel.yaml>=0.18.6",

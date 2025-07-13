@@ -1,23 +1,37 @@
-# Confdantic
+# confdantic
+
 [![Tests](https://github.com/zigai/confdantic/actions/workflows/tests.yml/badge.svg)](https://github.com/zigai/confdantic/actions/workflows/tests.yml)
 [![PyPI version](https://badge.fury.io/py/confdantic.svg)](https://badge.fury.io/py/confdantic)
 ![Supported versions](https://img.shields.io/badge/python-3.10+-blue.svg)
 [![Downloads](https://static.pepy.tech/badge/confdantic)](https://pepy.tech/project/confdantic)
 [![license](https://img.shields.io/github/license/zigai/confdantic.svg)](https://github.com/zigai/confdantic/blob/master/LICENSE)
 
-`Confdantic` is a Python library that enhances Pydantic's capabilities for working with JSON, YAML, and TOML formats.
-It preserves field descriptions as comments when serializing to YAML or TOML, making it great for generating user-friendly configuration files.
+`Confdantic` is a Python library that enhances Pydantic's capabilities for working with JSON, YAML, and TOML formats by preserving field descriptions as comments when serializing to YAML or TOML.
 
 ## Installation
-#### From PyPi
-```
+
+### Using pip
+
+```sh
 pip install confdantic
 ```
-#### From source
+
+### Using uv
+
+```sh
+uv add confdantic
 ```
+
+### From source
+
+```sh
 pip install git+https://github.com/zigai/confdantic.git
+# or
+uv add git+https://github.com/zigai/confdantic.git
 ```
+
 ## Example
+
 ```python
 from typing import Literal
 from pydantic import Field
@@ -53,7 +67,9 @@ config = ApplicationConfig(
 config.save("config.yaml", comments=True)
 config.save("config.toml", comments=True)
 ```
+
 `config.yaml`
+
 ```yaml
 debug: false  # Enable debug mode
 log_level: INFO # Logging level | choices: DEBUG, INFO, WARNING, ERROR
@@ -65,7 +81,9 @@ database:
 allowed_hosts:  # A list of host/domain names that this application can serve.
   - example.com
 ```
+
 `config.toml`
+
 ```toml
 debug = false # Enable debug mode
 log_level = "INFO" # Logging level | choices: DEBUG, INFO, WARNING, ERROR
@@ -77,5 +95,7 @@ port = 5432 # The port number on which the database server is listening.
 username = "admin"
 password = "secret"
 ```
+
 ## License
+
 [MIT License](https://github.com/zigai/confdantic/blob/master/LICENSE)

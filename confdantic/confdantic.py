@@ -32,7 +32,6 @@ def get_comment(
     This function creates a comment string based on the field's description and, if the field
     is a Literal type, its possible choices.
     """
-
     if is_direct_literal(field.annotation) and add_choices:
         choices = list(get_literal_choices(field.annotation))
         if not choices:
@@ -68,9 +67,7 @@ class Confdantic(BaseModel):
     model_config = ConfigDict(validate_assignment=True)
 
     def to_commented_yaml(self) -> CommentedMap | CommentedSeq:
-        """
-        Converts the Confdantic instance to a CommentedMap or CommentedSeq for YAML serialization.
-        """
+        """Converts the Confdantic instance to a CommentedMap or CommentedSeq for YAML serialization."""
         return self._to_commented_yaml(self)
 
     def _to_commented_yaml(self, obj: Any) -> CommentedMap | CommentedSeq | Any:
@@ -116,7 +113,6 @@ class Confdantic(BaseModel):
             FileNotFoundError: If the specified file does not exist.
             ValueError: If the file extension is not recognized.
         """
-
         if not os.path.exists(filepath):
             raise FileNotFoundError(filepath)
         ext = file_ext(filepath)
@@ -146,7 +142,6 @@ class Confdantic(BaseModel):
             FileExistsError: If the file already exists and overwrite is False.
             ValueError: If the file extension is not recognized.
         """
-
         if os.path.exists(filepath) and not overwrite:
             raise FileExistsError(filepath)
 
@@ -167,19 +162,19 @@ class Confdantic(BaseModel):
             raise FileNotFoundError(filepath)
 
         yaml = YAML()
-        with open(filepath, "r") as f:
+        with open(filepath) as f:
             data = yaml.load(f)
 
         return cls.model_validate(data)
 
     @classmethod
     def load_toml(cls, filepath: str):
-        with open(filepath, "r") as f:
+        with open(filepath) as f:
             return cls.model_validate(toml.load(f))
 
     @classmethod
     def load_json(cls, filepath: str):
-        with open(filepath, "r") as f:
+        with open(filepath) as f:
             return cls.model_validate(json.load(f))
 
     def save_toml(self, filepath: str, overwrite: bool = True, comments: bool = True) -> None:

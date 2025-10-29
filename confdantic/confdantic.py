@@ -68,30 +68,26 @@ class Confdantic(BaseModel):
 
     def to_commented_yaml(self) -> CommentedMap | CommentedSeq:
         """Converts the Confdantic instance to a CommentedMap or CommentedSeq for YAML serialization."""
-        return self._to_commented_yaml(self)
+        data = self.model_dump()
+        return self._to_commented_yaml(data)
 
     def _to_commented_yaml(self, obj: Any) -> CommentedMap | CommentedSeq | Any:
-        if issubclass(obj.__class__, BaseModel):
+        if isinstance(obj, dict):
             cm = CommentedMap()
-            for field_name, field in obj.model_fields.items():
-                value = getattr(obj, field_name)
-                cm[field_name] = self._to_commented_yaml(value)
+            for key, value in obj.items():
+                cm[key] = self._to_commented_yaml(value)
 
-                comment = get_comment(field, format="yaml")
-                if comment:
-                    cm.yaml_add_eol_comment(comment, field_name)
-
+                if issubclass(self.__class__, BaseModel) and key in self.__class__.model_fields:
+                    field = self.__class__.model_fields[key]
+                    comment = get_comment(field, format="yaml")
+                    if comment:
+                        cm.yaml_add_eol_comment(comment, key)
             return cm
         elif isinstance(obj, list):
             cs = CommentedSeq()
             for item in obj:
                 cs.append(self._to_commented_yaml(item))
             return cs
-        elif isinstance(obj, dict):
-            cm = CommentedMap()
-            for key, value in obj.items():
-                cm[key] = self._to_commented_yaml(value)
-            return cm
         else:
             return obj
 
@@ -126,7 +122,13 @@ class Confdantic(BaseModel):
             case _:
                 raise ValueError(f"Unknown file extension: {ext}")
 
-    def save(self, filepath: str, overwrite: bool = True, comments: bool = True):
+    def save(
+        self,
+        filepath: str,
+        overwrite: bool = True,
+        comments: bool = True,
+        serialize_unsupported: bool = False,
+    ):
         """
         Save the configuration to a file.
 
@@ -137,6 +139,7 @@ class Confdantic(BaseModel):
             filepath (str): The path where the configuration file will be saved.
             overwrite (bool, optional): Whether to overwrite the file if it already exists. Defaults to True.
             comments (bool, optional): Whether to include comments in the saved file. Defaults to True.
+            serialize_unsupported (bool, optional): Whether to serialize unsupported types as strings. Defaults to False.
 
         Raises:
             FileExistsError: If the file already exists and overwrite is False.
@@ -148,11 +151,22 @@ class Confdantic(BaseModel):
         ext = file_ext(filepath)
         match ext:
             case "toml" | "tml":
-                return self.save_toml(filepath, overwrite=overwrite, comments=comments)
+                return self.save_toml(
+                    filepath,
+                    overwrite=overwrite,
+                    comments=comments,
+                    serialize_unsupported=serialize_unsupported,
+                )
             case "yaml" | "yml":
-                return self.save_yaml(filepath=filepath, overwrite=overwrite)
+                return self.save_yaml(
+                    filepath=filepath,
+                    overwrite=overwrite,
+                    serialize_unsupported=serialize_unsupported,
+                )
             case "json":
-                return self.save_json(filepath, overwrite=overwrite)
+                return self.save_json(
+                    filepath, overwrite=overwrite, serialize_unsupported=serialize_unsupported
+                )
             case _:
                 raise ValueError(f"Unknown file extension: {ext}")
 
@@ -173,14 +187,20 @@ class Confdantic(BaseModel):
             return cls.model_validate(toml.load(f))
 
     @classmethod
-    def load_json(cls, filepath: str):
-        with open(filepath) as f:
+    def load_json(cls, filepath: str, encoding: str = "utf-8"):
+        with open(filepath, encoding=encoding) as f:
             return cls.model_validate(json.load(f))
 
-    def save_toml(self, filepath: str, overwrite: bool = True, comments: bool = True) -> None:
+    def save_toml(
+        self,
+        filepath: str,
+        overwrite: bool = True,
+        comments: bool = True,
+        serialize_unsupported: bool = False,
+    ) -> None:
         if os.path.exists(filepath) and not overwrite:
             raise FileExistsError(filepath)
-        data = self.model_dump()
+        data = self.model_dump(mode="json") if serialize_unsupported else self.model_dump()
         toml_string = tomlkit.dumps(data)
         toml_doc = tomlkit.loads(toml_string)
 
@@ -189,7 +209,7 @@ class Confdantic(BaseModel):
                 tomlkit.dump(toml_doc, f)
                 return
 
-        for name, field in self.model_fields.items():
+        for name, field in self.__class__.model_fields.items():
             item = toml_doc.item(name)
             comment = get_comment(field, format="toml")
             if comment:
@@ -214,14 +234,25 @@ class Confdantic(BaseModel):
         with open(filepath, "w") as f:
             tomlkit.dump(toml_doc, f)
 
-    def save_json(self, filepath: str, overwrite: bool = True) -> None:
+    def save_json(
+        self,
+        filepath: str,
+        overwrite: bool = True,
+        serialize_unsupported: bool = False,
+    ) -> None:
         if os.path.exists(filepath) and not overwrite:
             raise FileExistsError(filepath)
-        data = self.model_dump()
+        data = self.model_dump(mode="json") if serialize_unsupported else self.model_dump()
         with open(filepath, "w") as f:
-            json.dump(data, f)
+            json.dump(data, f, indent=4, default=str)
 
-    def save_yaml(self, filepath: str, overwrite: bool = True, comments: bool = True) -> None:
+    def save_yaml(
+        self,
+        filepath: str,
+        overwrite: bool = True,
+        comments: bool = True,
+        serialize_unsupported: bool = False,
+    ) -> None:
         if os.path.exists(filepath) and not overwrite:
             raise FileExistsError(filepath)
 
@@ -229,11 +260,9 @@ class Confdantic(BaseModel):
         yaml.indent(mapping=2, sequence=4, offset=2)
         yaml.preserve_quotes = True
 
-        data = self.model_dump()
+        data = self.model_dump(mode="json") if serialize_unsupported else self.model_dump()
         if comments:
-            data = self.to_commented_yaml()
-        else:
-            data = self.model_dump()
+            data = self._to_commented_yaml(data)
         with open(filepath, "w") as f:
             yaml.dump(data, f)
 

@@ -1,6 +1,6 @@
 [project]
 name = "confdantic"
-version = "0.1.1"
+version = "0.1.2"
 description = "Generate user-friendly configuration files from Pydantic models"
 authors = [{ name = "zigai", email = "ziga.ivansek@gmail.com" }]
 license = { file = "LICENSE" }
@@ -110,6 +110,7 @@ select = [
     "E",       # Pycodestyle (Error)
     'I',       # isort
     'D',       # pydocstyle
+    'D213',    # pydocstyle
     'UP',      # pyupgrade
     'YTT',     # flake8-2020
     'B',       # flake8-bugbear

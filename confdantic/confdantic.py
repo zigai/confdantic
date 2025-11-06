@@ -1,5 +1,6 @@
 import json
 import os
+from pathlib import PurePath
 from typing import Any, Literal
 
 import toml
@@ -64,7 +65,10 @@ class Confdantic(BaseModel):
     supporting TOML, YAML, and JSON formats with optional comment preservation.
     """
 
-    model_config = ConfigDict(validate_assignment=True)
+    model_config = ConfigDict(
+        validate_assignment=True,
+        json_encoders={PurePath: lambda path: path.as_posix()},
+    )
 
     def to_commented_yaml(self) -> CommentedMap | CommentedSeq:
         """Converts the Confdantic instance to a CommentedMap or CommentedSeq for YAML serialization."""

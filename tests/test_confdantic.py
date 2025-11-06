@@ -217,8 +217,8 @@ def test_save_toml_with_arbitrary_type(temp_dir):
 
     model.save(str(filepath), comments=False, serialize_unsupported=True)
     content = filepath.read_text()
-    expected_path = str(base_path)
-    assert f'base_path = "{expected_path}"' in content
+    parsed = tomlkit.loads(content)
+    assert Path(parsed["base_path"]) == base_path
 
 
 def test_save_toml_with_nested_boolean_comments(temp_dir):

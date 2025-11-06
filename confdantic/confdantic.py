@@ -226,9 +226,14 @@ class Confdantic(BaseModel):
                 subfield = field.annotation
                 for subfname, f in subfield.model_fields.items():
                     table: Table = toml_doc[name]
-                    subitem = table.get(subfname)
+                    try:
+                        subitem = table.item(subfname)
+                    except KeyError:
+                        subitem = None
+                    if subitem is None:
+                        continue
                     comment = get_comment(f, format="toml")
-                    if comment:
+                    if comment and hasattr(subitem, "comment"):
                         subitem.comment(comment)
 
         with open(filepath, "w") as f:

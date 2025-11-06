@@ -8,6 +8,7 @@ import tomlkit
 from objinspect.typing import get_literal_choices, is_direct_literal
 from pydantic import BaseModel, ConfigDict
 from pydantic.fields import FieldInfo
+from pydantic_core import to_jsonable_python
 from ruamel.yaml import YAML
 from ruamel.yaml.comments import CommentedMap, CommentedSeq
 from tomlkit.items import Table
@@ -69,6 +70,12 @@ class Confdantic(BaseModel):
         validate_assignment=True,
         json_encoders={PurePath: lambda path: path.as_posix()},
     )
+
+    @staticmethod
+    def _json_fallback(value: Any) -> Any:
+        if isinstance(value, PurePath):
+            return value.as_posix()
+        return str(value)
 
     def to_commented_yaml(self) -> CommentedMap | CommentedSeq:
         """Converts the Confdantic instance to a CommentedMap or CommentedSeq for YAML serialization."""
@@ -204,7 +211,9 @@ class Confdantic(BaseModel):
     ) -> None:
         if os.path.exists(filepath) and not overwrite:
             raise FileExistsError(filepath)
-        data = self.model_dump(mode="json") if serialize_unsupported else self.model_dump()
+        data = self.model_dump()
+        if serialize_unsupported:
+            data = to_jsonable_python(data, fallback=self._json_fallback)
         toml_string = tomlkit.dumps(data)
         toml_doc = tomlkit.loads(toml_string)
 
@@ -251,7 +260,9 @@ class Confdantic(BaseModel):
     ) -> None:
         if os.path.exists(filepath) and not overwrite:
             raise FileExistsError(filepath)
-        data = self.model_dump(mode="json") if serialize_unsupported else self.model_dump()
+        data = self.model_dump()
+        if serialize_unsupported:
+            data = to_jsonable_python(data, fallback=self._json_fallback)
         with open(filepath, "w") as f:
             json.dump(data, f, indent=4, default=str)
 
@@ -269,7 +280,9 @@ class Confdantic(BaseModel):
         yaml.indent(mapping=2, sequence=4, offset=2)
         yaml.preserve_quotes = True
 
-        data = self.model_dump(mode="json") if serialize_unsupported else self.model_dump()
+        data = self.model_dump()
+        if serialize_unsupported:
+            data = to_jsonable_python(data, fallback=self._json_fallback)
         if comments:
             data = self._to_commented_yaml(data)
         with open(filepath, "w") as f:

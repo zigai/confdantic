@@ -208,7 +208,8 @@ def test_save_toml_with_arbitrary_type(temp_dir):
     class ArbitraryTomlModel(Confdantic):
         base_path: Path
 
-    model = ArbitraryTomlModel(base_path=Path("/etc/config"))
+    base_path = temp_dir / "config"
+    model = ArbitraryTomlModel(base_path=base_path)
     filepath = temp_dir / "arbitrary.toml"
 
     with pytest.raises(tomlkit.exceptions.ConvertError):
@@ -216,7 +217,8 @@ def test_save_toml_with_arbitrary_type(temp_dir):
 
     model.save(str(filepath), comments=False, serialize_unsupported=True)
     content = filepath.read_text()
-    assert 'base_path = "/etc/config"' in content
+    expected_path = base_path.as_posix()
+    assert f'base_path = "{expected_path}"' in content
 
 
 def test_save_toml_with_nested_boolean_comments(temp_dir):

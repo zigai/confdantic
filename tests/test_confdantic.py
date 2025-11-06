@@ -1,7 +1,10 @@
 import json
+from pathlib import Path
+from typing import Literal
 
 import pytest
 import toml
+import tomlkit
 import yaml
 from pydantic import BaseModel, Field
 
@@ -152,6 +155,84 @@ def test_save_toml_with_comments(temp_dir, sample_data):
 
     assert name_description in content
     assert age_description in content
+
+
+def test_save_toml_with_nested_comments_and_literals(temp_dir):
+    class Nested(BaseModel):
+        retries: int = Field(..., description="Number of retries")
+        level: Literal["info", "debug"] = Field(..., description="Logging level")
+
+    class CommentedTomlModel(Confdantic):
+        title: str = Field(..., description="Title description")
+        mode: Literal["dev", "prod"] = Field(..., description="Operating mode")
+        nested: Nested = Field(..., description="Nested configuration")
+
+    model = CommentedTomlModel(
+        title="Demo",
+        mode="dev",
+        nested={"retries": 3, "level": "info"},
+    )
+    filepath = temp_dir / "commented.toml"
+    model.save(str(filepath), comments=True)
+
+    content = filepath.read_text()
+    assert "# Title description" in content
+    assert "Operating mode | choices: dev, prod" in content
+    assert "[nested] # Nested configuration" in content
+    assert "Logging level | choices: info, debug" in content
+
+
+def test_save_toml_without_comments(temp_dir):
+    class Nested(BaseModel):
+        retries: int = Field(..., description="Number of retries")
+        level: Literal["info", "debug"] = Field(..., description="Logging level")
+
+    class PlainTomlModel(Confdantic):
+        title: str = Field(..., description="Title description")
+        mode: Literal["dev", "prod"] = Field(..., description="Operating mode")
+        nested: Nested = Field(..., description="Nested configuration")
+
+    model = PlainTomlModel(
+        title="Demo",
+        mode="dev",
+        nested={"retries": 3, "level": "info"},
+    )
+    filepath = temp_dir / "plain.toml"
+    model.save(str(filepath), comments=False)
+
+    content = filepath.read_text()
+    assert "#" not in content
+
+
+def test_save_toml_with_arbitrary_type(temp_dir):
+    class ArbitraryTomlModel(Confdantic):
+        base_path: Path
+
+    model = ArbitraryTomlModel(base_path=Path("/etc/config"))
+    filepath = temp_dir / "arbitrary.toml"
+
+    with pytest.raises(tomlkit.exceptions.ConvertError):
+        model.save(str(filepath), comments=False)
+
+    model.save(str(filepath), comments=False, serialize_unsupported=True)
+    content = filepath.read_text()
+    assert 'base_path = "/etc/config"' in content
+
+
+def test_save_toml_with_nested_boolean_comments(temp_dir):
+    class Nested(BaseModel):
+        enabled: bool = Field(..., description="Enable feature toggle")
+        retries: int = Field(..., description="Number of retries")
+
+    class BooleanCommentModel(Confdantic):
+        nested: Nested = Field(..., description="Nested settings")
+
+    model = BooleanCommentModel(nested={"enabled": True, "retries": 5})
+    filepath = temp_dir / "bool_comments.toml"
+
+    model.save(str(filepath), comments=True)
+    content = filepath.read_text()
+    assert "Enable feature toggle" in content
 
 
 def test_nested_model_save_load(temp_dir):

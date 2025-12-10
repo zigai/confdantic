@@ -1,6 +1,6 @@
 [project]
 name = "confdantic"
-version = "0.1.2"
+version = "0.1.3"
 description = "Generate user-friendly configuration files from Pydantic models"
 authors = [{ name = "zigai", email = "ziga.ivansek@gmail.com" }]
 license = { file = "LICENSE" }
@@ -173,7 +173,6 @@ ignore = [
     "N803",
     "N806",
     "UP007",
-    "UP038",
 ]
 exclude = ["build", "tests/**"]
 

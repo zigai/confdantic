@@ -255,3 +255,33 @@ def test_nested_model_save_load(temp_dir):
     loaded_model = Person.load(str(filepath))
     assert loaded_model.model_dump() == data
     assert isinstance(loaded_model.address, Address)
+
+
+def test_save_toml_with_none_values(temp_dir):
+    model = ExampleModel(name="John Doe", age=30, hobbies=["reading"], address=None)
+    filepath = temp_dir / "test_none.toml"
+    model.save(str(filepath))
+
+    with open(filepath) as f:
+        content = f.read()
+    assert "address" not in content
+
+    loaded_model = ExampleModel.load(str(filepath))
+    assert loaded_model.name == "John Doe"
+    assert loaded_model.age == 30
+    assert loaded_model.hobbies == ["reading"]
+    assert loaded_model.address is None
+
+
+def test_save_toml_round_trip_with_none_values(temp_dir):
+    model = ExampleModel(name="Jane Doe", age=25, address=None)
+    filepath = temp_dir / "round_trip.toml"
+    model.save(str(filepath))
+
+    loaded_model = ExampleModel.load(str(filepath))
+    assert loaded_model.model_dump() == {
+        "name": "Jane Doe",
+        "age": 25,
+        "hobbies": [],
+        "address": None,
+    }

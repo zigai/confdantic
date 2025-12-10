@@ -211,7 +211,7 @@ class Confdantic(BaseModel):
     ) -> None:
         if os.path.exists(filepath) and not overwrite:
             raise FileExistsError(filepath)
-        data = self.model_dump()
+        data = self.model_dump(exclude_none=True)
         if serialize_unsupported:
             data = to_jsonable_python(data, fallback=self._json_fallback)
         toml_string = tomlkit.dumps(data)
@@ -223,7 +223,11 @@ class Confdantic(BaseModel):
                 return
 
         for name, field in self.__class__.model_fields.items():
-            item = toml_doc.item(name)
+            try:
+                item = toml_doc.item(name)
+            except KeyError:
+                continue
+
             comment = get_comment(field, format="toml")
             if comment:
                 item.comment(comment)

@@ -285,3 +285,144 @@ def test_save_toml_round_trip_with_none_values(temp_dir):
         "hobbies": [],
         "address": None,
     }
+
+
+def test_load_jsonc(temp_dir, sample_data):
+    filepath = temp_dir / "test.jsonc"
+    content = """{
+        // This is a comment
+        "name": "John Doe",
+        "age": 30, /* inline comment */
+        "hobbies": ["reading", "cycling"],
+        "address": "123 Main St"
+    }"""
+    filepath.write_text(content)
+
+    model = ExampleModel.load(str(filepath))
+    assert model.model_dump() == sample_data
+
+
+def test_load_json5(temp_dir, sample_data):
+    filepath = temp_dir / "test.json5"
+    content = """{
+        "name": "John Doe",
+        "age": 30,
+        "hobbies": ["reading", "cycling"],
+        "address": "123 Main St"
+    }"""
+    filepath.write_text(content)
+
+    model = ExampleModel.load(str(filepath))
+    assert model.model_dump() == sample_data
+
+
+def test_save_jsonc_with_comments(temp_dir, sample_data):
+    name_description = "The person's name"
+    age_description = "The person's age"
+
+    class CommentedModel(Confdantic):
+        name: str = Field(..., description=name_description)
+        age: int = Field(..., description=age_description)
+
+    model = CommentedModel(**sample_data)
+    filepath = temp_dir / "test.jsonc"
+    model.save(str(filepath), comments=True)
+
+    content = filepath.read_text()
+    assert name_description in content
+    assert age_description in content
+    assert "//" in content
+
+
+def test_save_jsonc_without_comments(temp_dir, sample_data):
+    class CommentedModel(Confdantic):
+        name: str = Field(..., description="A description")
+        age: int = Field(..., description="Another description")
+
+    model = CommentedModel(**sample_data)
+    filepath = temp_dir / "test.jsonc"
+    model.save(str(filepath), comments=False)
+
+    content = filepath.read_text()
+    assert "//" not in content
+    json.loads(content)
+
+
+def test_save_jsonc_comment_position_above(temp_dir, sample_data):
+    class CommentedModel(Confdantic):
+        name: str = Field(..., description="Name field")
+        age: int = Field(..., description="Age field")
+
+    model = CommentedModel(**sample_data)
+    filepath = temp_dir / "test.jsonc"
+    model.save(str(filepath), comments=True, comment_position="above_field")
+
+    content = filepath.read_text()
+    lines = content.split("\n")
+    for i, line in enumerate(lines):
+        if "// Name field" in line:
+            assert '"name"' in lines[i + 1]
+            break
+
+
+def test_save_jsonc_with_nested_comments(temp_dir):
+    class Nested(BaseModel):
+        enabled: bool = Field(..., description="Enable feature")
+        retries: int = Field(..., description="Number of retries")
+
+    class NestedModel(Confdantic):
+        title: str = Field(..., description="Title")
+        config: Nested = Field(..., description="Configuration")
+
+    model = NestedModel(title="Test", config={"enabled": True, "retries": 3})
+    filepath = temp_dir / "nested.jsonc"
+    model.save(str(filepath), comments=True)
+
+    content = filepath.read_text()
+    assert "// Title" in content
+    assert "// Configuration" in content
+    assert "// Enable feature" in content
+    assert "// Number of retries" in content
+
+
+def test_save_jsonc_with_literal_choices(temp_dir):
+    class ChoicesModel(Confdantic):
+        mode: Literal["dev", "prod"] = Field(..., description="Operating mode")
+
+    model = ChoicesModel(mode="dev")
+    filepath = temp_dir / "choices.jsonc"
+    model.save(str(filepath), comments=True)
+
+    content = filepath.read_text()
+    assert "Operating mode | choices: dev, prod" in content
+
+
+def test_jsonc_round_trip(temp_dir):
+    class RoundTripModel(Confdantic):
+        name: str = Field(..., description="Name")
+        value: int
+
+    original = RoundTripModel(name="test", value=42)
+    filepath = temp_dir / "roundtrip.jsonc"
+    original.save(str(filepath), comments=True)
+
+    loaded = RoundTripModel.load(str(filepath))
+    assert loaded.name == original.name
+    assert loaded.value == original.value
+
+
+def test_save_json5_extension(temp_dir, sample_data):
+    class SimpleModel(Confdantic):
+        name: str = Field(..., description="Name field")
+        age: int
+
+    model = SimpleModel(**sample_data)
+    filepath = temp_dir / "test.json5"
+    model.save(str(filepath), comments=True)
+
+    content = filepath.read_text()
+    assert "// Name field" in content
+
+    loaded = SimpleModel.load(str(filepath))
+    assert loaded.name == sample_data["name"]
+    assert loaded.age == sample_data["age"]

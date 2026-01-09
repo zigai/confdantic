@@ -40,9 +40,10 @@ wheels = [
 
 [[package]]
 name = "confdantic"
-version = "0.1.2"
+version = "0.1.3"
 source = { editable = "." }
 dependencies = [
+    { name = "json-with-comments" },
     { name = "objinspect" },
     { name = "pydantic" },
     { name = "ruamel-yaml" },
@@ -69,6 +70,7 @@ requires-dist = [
     { name = "codespell", marker = "extra == 'dev'" },
     { name = "coverage", marker = "extra == 'dev'" },
     { name = "coverage", marker = "extra == 'test'" },
+    { name = "json-with-comments", specifier = ">=1.0.0" },
     { name = "mypy", marker = "extra == 'dev'" },
     { name = "objinspect", specifier = ">=0.3.1" },
     { name = "pre-commit", marker = "extra == 'dev'" },
@@ -236,6 +238,15 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/f2/97/ebf4da567aa6827c909642694d71c9fcf53e5b504f2d96afea02718862f3/iniconfig-2.1.0.tar.gz", hash = "sha256:3abbd2e30b36733fee78f9c7f7308f2d0050e88f0087fd25c2645f63c773e1c7", size = 4793, upload-time = "2025-03-19T20:09:59.721Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/2c/e1/e6716421ea10d38022b952c159d5161ca1193197fb744506875fbb87ea7b/iniconfig-2.1.0-py3-none-any.whl", hash = "sha256:9deba5723312380e77435581c6bf4935c94cbfab9b1ed33ef8d238ea168eb760", size = 6050, upload-time = "2025-03-19T20:10:01.071Z" },
+]
+
+[[package]]
+name = "json-with-comments"
+version = "1.2.10"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/bf/6d/638e8adbb2b92bb0803c092dd8ae6482945961c8545fc7e2f21c48233928/json_with_comments-1.2.10.tar.gz", hash = "sha256:0020b321cf6c80963c85f95ce985e71332f1797ed49abfd1cd675b3bdee24a28", size = 6788, upload-time = "2024-12-10T05:46:37.415Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/00/8a/f67dadb0648f00ac2249d3ef32532f0d5a2e72016f8426290ce6fe575870/json_with_comments-1.2.10-py3-none-any.whl", hash = "sha256:d7989c2577b1f8cbba735209f8d388d21017feb42ef30c29c230040f86b42700", size = 6533, upload-time = "2024-12-10T05:46:34.856Z" },
 ]
 
 [[package]]

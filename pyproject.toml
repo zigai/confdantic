@@ -7,6 +7,7 @@ license = { file = "LICENSE" }
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
+    "json-with-comments>=1.0.0",
     "objinspect>=0.3.1",
     "pydantic>=2.12.3",
     "ruamel-yaml>=0.18.6",
@@ -35,14 +36,18 @@ keywords = [
     "config",
     "yaml",
     "toml",
+    "jsonc",
+    "json5",
     "pydantic",
     "pydantic-config",
     "pydantic-config-file",
     "pydantic-toml-comments",
     "pydantic-yaml-comments",
+    "pydantic-jsonc-comments",
     "pydantic-configuration",
     "yaml-configuration",
     "toml-configuration",
+    "jsonc-configuration",
 ]
 
 [project.optional-dependencies]

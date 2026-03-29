@@ -35,8 +35,8 @@ def sample_data():
 
 def test_load_json(temp_dir, sample_data):
     filepath = temp_dir / "test.json"
-    with open(filepath, "w") as f:
-        json.dump(sample_data, f)
+    with filepath.open("w") as file:
+        json.dump(sample_data, file)
 
     model = ExampleModel.load(str(filepath))
     assert model.model_dump() == sample_data
@@ -44,8 +44,8 @@ def test_load_json(temp_dir, sample_data):
 
 def test_load_yaml(temp_dir, sample_data):
     filepath = temp_dir / "test.yaml"
-    with open(filepath, "w") as f:
-        yaml.dump(sample_data, f)
+    with filepath.open("w") as file:
+        yaml.dump(sample_data, file)
 
     model = ExampleModel.load(str(filepath))
     assert model.model_dump() == sample_data
@@ -53,8 +53,8 @@ def test_load_yaml(temp_dir, sample_data):
 
 def test_load_toml(temp_dir, sample_data):
     filepath = temp_dir / "test.toml"
-    with open(filepath, "w") as f:
-        toml.dump(sample_data, f)
+    with filepath.open("w") as file:
+        toml.dump(sample_data, file)
 
     model = ExampleModel.load(str(filepath))
     assert model.model_dump() == sample_data
@@ -68,7 +68,7 @@ def test_load_nonexistent_file():
 def test_load_unsupported_format(temp_dir):
     filepath = temp_dir / "test.txt"
     filepath.touch()
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match=r"Unknown file extension: txt"):
         ExampleModel.load(str(filepath))
 
 
@@ -77,8 +77,8 @@ def test_save_json(temp_dir, sample_data):
     filepath = temp_dir / "test.json"
     model.save(str(filepath))
 
-    with open(filepath, "r") as f:
-        loaded_data = json.load(f)
+    with filepath.open() as file:
+        loaded_data = json.load(file)
     assert loaded_data == sample_data
 
 
@@ -87,8 +87,8 @@ def test_save_yaml(temp_dir, sample_data):
     filepath = temp_dir / "test.yaml"
     model.save(str(filepath))
 
-    with open(filepath, "r") as f:
-        loaded_data = yaml.safe_load(f)
+    with filepath.open() as file:
+        loaded_data = yaml.safe_load(file)
     assert loaded_data == sample_data
 
 
@@ -97,8 +97,8 @@ def test_save_toml(temp_dir, sample_data):
     filepath = temp_dir / "test.toml"
     model.save(str(filepath))
 
-    with open(filepath, "r") as f:
-        loaded_data = toml.load(f)
+    with filepath.open() as file:
+        loaded_data = toml.load(file)
     assert loaded_data == sample_data
 
 
@@ -115,7 +115,7 @@ def test_save_unsupported_format(temp_dir, sample_data):
     model = ExampleModel(**sample_data)
     filepath = temp_dir / "test.txt"
 
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match=r"Unknown file extension: txt"):
         model.save(str(filepath))
 
 
@@ -131,8 +131,8 @@ def test_save_yaml_with_comments(temp_dir, sample_data):
     filepath = temp_dir / "test.yaml"
     model.save(str(filepath), comments=True)
 
-    with open(filepath, "r") as f:
-        content = f.read()
+    with filepath.open() as file:
+        content = file.read()
 
     assert name_description in content
     assert age_description in content
@@ -150,8 +150,8 @@ def test_save_toml_with_comments(temp_dir, sample_data):
     filepath = temp_dir / "test.toml"
     model.save(str(filepath), comments=True)
 
-    with open(filepath, "r") as f:
-        content = f.read()
+    with filepath.open() as file:
+        content = file.read()
 
     assert name_description in content
     assert age_description in content
@@ -262,8 +262,8 @@ def test_save_toml_with_none_values(temp_dir):
     filepath = temp_dir / "test_none.toml"
     model.save(str(filepath))
 
-    with open(filepath) as f:
-        content = f.read()
+    with filepath.open() as file:
+        content = file.read()
     assert "address" not in content
 
     loaded_model = ExampleModel.load(str(filepath))

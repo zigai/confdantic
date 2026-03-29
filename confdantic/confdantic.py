@@ -1,8 +1,7 @@
 import json
-import os
 import re
-from pathlib import PurePath
-from typing import Any, Literal
+from pathlib import Path, PurePath
+from typing import Literal
 
 import jsonc
 import toml
@@ -14,6 +13,7 @@ from pydantic_core import to_jsonable_python
 from ruamel.yaml import YAML
 from ruamel.yaml.comments import CommentedMap, CommentedSeq
 from tomlkit.items import Table
+from typing_extensions import Self
 
 CommentPosition = Literal["end_of_line", "above_field"]
 
@@ -23,15 +23,22 @@ def sanitize_comment(comment: str) -> str:
     return sanitized
 
 
-def file_ext(filepath: str):
-    ext = os.path.splitext(filepath)[1].lower()
-    if ext.startswith("."):
-        ext = ext[1:]
-    return ext
+def file_ext(filepath: str) -> str:
+    return Path(filepath).suffix.lower().removeprefix(".")
+
+
+def _base_model_annotation(annotation: object) -> type[BaseModel] | None:
+    try:
+        if isinstance(annotation, type) and issubclass(annotation, BaseModel):
+            return annotation
+    except TypeError:
+        return None
+
+    return None
 
 
 def get_comment(
-    field: FieldInfo, format: Literal["json", "yaml", "toml"], add_choices: bool = True
+    field: FieldInfo, fmt: Literal["json", "yaml", "toml"], add_choices: bool = True
 ) -> str | None:
     """
     Generate a comment string for a Pydantic field, including description and choices if they exist.
@@ -46,21 +53,55 @@ def get_comment(
             formated_choices = []
             for i in choices:
                 if i is None:
-                    if format in ["json", "yaml"]:
+                    if fmt in ["json", "yaml"]:
                         formated_choices.append("null")
                     else:
                         formated_choices.append("''")
                 else:
                     formated_choices.append(str(i))
+
             choices_str = "choices: " + ", ".join(formated_choices)
     else:
         choices_str = None
+
     if not field.description:
         return choices_str
     comment = sanitize_comment(field.description)
     if choices_str:
         comment += " | " + choices_str
+
     return comment
+
+
+def _resolve_json_comment(
+    *,
+    key: str,
+    depth: int,
+    current_parent: str | None,
+    model_fields: dict[str, FieldInfo],
+    nested_fields: dict[str, dict[str, FieldInfo]],
+) -> tuple[str | None, str | None]:
+    if depth == 1:
+        field = model_fields.get(key)
+        if field is None:
+            return None, None
+
+        annotation = _base_model_annotation(field.annotation)
+        next_parent = key if annotation is not None else None
+        return get_comment(field, fmt="json"), next_parent
+
+    if depth == 2 and current_parent:
+        nested = nested_fields.get(current_parent)
+        if nested is None:
+            return None, None
+
+        field = nested.get(key)
+        if field is None:
+            return None, None
+
+        return get_comment(field, fmt="json"), current_parent
+
+    return None, None
 
 
 def insert_jsonc_comments(
@@ -95,21 +136,15 @@ def insert_jsonc_comments(
         if match:
             indentation = match.group(1)
             key = match.group(2)
-            comment: str | None = None
-
-            if depth == 1 and key in model_fields:
-                field = model_fields[key]
-                comment = get_comment(field, format="json")
-                annotation = field.annotation
-                try:
-                    if isinstance(annotation, type) and issubclass(annotation, BaseModel):
-                        current_parent = key
-                except TypeError:
-                    pass
-            elif depth == 2 and current_parent and current_parent in nested_fields:
-                nested = nested_fields[current_parent]
-                if key in nested:
-                    comment = get_comment(nested[key], format="json")
+            comment, next_parent = _resolve_json_comment(
+                key=key,
+                depth=depth,
+                current_parent=current_parent,
+                model_fields=model_fields,
+                nested_fields=nested_fields,
+            )
+            if next_parent is not None:
+                current_parent = next_parent
 
             if comment:
                 if position == "end_of_line":
@@ -119,6 +154,7 @@ def insert_jsonc_comments(
                     result_lines.append(f"{indentation}// {comment}")
                     result_lines.append(line)
                 depth += open_braces - close_braces
+
                 continue
 
         depth += open_braces - close_braces
@@ -136,13 +172,32 @@ def _build_nested_field_map(
     """Build a mapping of field names to their nested model_fields for BaseModel fields."""
     nested: dict[str, dict[str, FieldInfo]] = {}
     for name, field in model_fields.items():
-        annotation = field.annotation
-        try:
-            if isinstance(annotation, type) and issubclass(annotation, BaseModel):
-                nested[name] = annotation.model_fields
-        except TypeError:
-            pass
+        annotation = _base_model_annotation(field.annotation)
+        if annotation is not None:
+            nested[name] = annotation.model_fields
+
     return nested
+
+
+def _add_nested_toml_comments(field: FieldInfo, table: Table) -> None:
+    annotation = _base_model_annotation(field.annotation)
+    if annotation is None:
+        return
+
+    for subfield_name, subfield in annotation.model_fields.items():
+        try:
+            subitem = table.item(subfield_name)
+        except KeyError:
+            continue
+
+        comment = get_comment(subfield, fmt="toml")
+        if comment and hasattr(subitem, "comment"):
+            subitem.comment(comment)
+
+
+def _write_toml_document(filepath: Path, toml_doc: tomlkit.TOMLDocument) -> None:
+    with filepath.open("w") as file:
+        tomlkit.dump(toml_doc, file)
 
 
 class Confdantic(BaseModel):
@@ -158,9 +213,10 @@ class Confdantic(BaseModel):
     )
 
     @staticmethod
-    def _json_fallback(value: Any) -> Any:
+    def _json_fallback(value: object) -> str:
         if isinstance(value, PurePath):
             return value.as_posix()
+
         return str(value)
 
     def to_commented_yaml(self) -> CommentedMap | CommentedSeq:
@@ -168,7 +224,7 @@ class Confdantic(BaseModel):
         data = self.model_dump()
         return self._to_commented_yaml(data)
 
-    def _to_commented_yaml(self, obj: Any) -> CommentedMap | CommentedSeq | Any:
+    def _to_commented_yaml(self, obj: object) -> object:
         if isinstance(obj, dict):
             cm = CommentedMap()
             for key, value in obj.items():
@@ -176,20 +232,23 @@ class Confdantic(BaseModel):
 
                 if issubclass(self.__class__, BaseModel) and key in self.__class__.model_fields:
                     field = self.__class__.model_fields[key]
-                    comment = get_comment(field, format="yaml")
+                    comment = get_comment(field, fmt="yaml")
                     if comment:
                         cm.yaml_add_eol_comment(comment, key)
+
             return cm
-        elif isinstance(obj, list):
+
+        if isinstance(obj, list):
             cs = CommentedSeq()
             for item in obj:
                 cs.append(self._to_commented_yaml(item))
+
             return cs
-        else:
-            return obj
+
+        return obj
 
     @classmethod
-    def load(cls, filepath: str):
+    def load(cls, filepath: str) -> Self:
         """
         Load a Pydantic model from a file.
 
@@ -206,7 +265,8 @@ class Confdantic(BaseModel):
             FileNotFoundError: If the specified file does not exist.
             ValueError: If the file extension is not recognized.
         """
-        if not os.path.exists(filepath):
+        path = Path(filepath)
+        if not path.exists():
             raise FileNotFoundError(filepath)
         ext = file_ext(filepath)
         match ext:
@@ -246,7 +306,8 @@ class Confdantic(BaseModel):
             FileExistsError: If the file already exists and overwrite is False.
             ValueError: If the file extension is not recognized.
         """
-        if os.path.exists(filepath) and not overwrite:
+        path = Path(filepath)
+        if path.exists() and not overwrite:
             raise FileExistsError(filepath)
 
         ext = file_ext(filepath)
@@ -281,32 +342,35 @@ class Confdantic(BaseModel):
                 raise ValueError(f"Unknown file extension: {ext}")
 
     @classmethod
-    def load_yaml(cls, filepath: str):
-        if not os.path.exists(filepath):
+    def load_yaml(cls, filepath: str) -> Self:
+        path = Path(filepath)
+        if not path.exists():
             raise FileNotFoundError(filepath)
 
         yaml = YAML()
-        with open(filepath) as f:
-            data = yaml.load(f)
+        with path.open() as file:
+            data = yaml.load(file)
 
         return cls.model_validate(data)
 
     @classmethod
-    def load_toml(cls, filepath: str):
-        with open(filepath) as f:
-            return cls.model_validate(toml.load(f))
+    def load_toml(cls, filepath: str) -> Self:
+        with Path(filepath).open() as file:
+            return cls.model_validate(toml.load(file))
 
     @classmethod
-    def load_json(cls, filepath: str, encoding: str = "utf-8"):
-        with open(filepath, encoding=encoding) as f:
-            return cls.model_validate(json.load(f))
+    def load_json(cls, filepath: str, encoding: str = "utf-8") -> Self:
+        with Path(filepath).open(encoding=encoding) as file:
+            return cls.model_validate(json.load(file))
 
     @classmethod
-    def load_jsonc(cls, filepath: str, encoding: str = "utf-8"):
-        if not os.path.exists(filepath):
+    def load_jsonc(cls, filepath: str, encoding: str = "utf-8") -> Self:
+        path = Path(filepath)
+        if not path.exists():
             raise FileNotFoundError(filepath)
-        with open(filepath, encoding=encoding) as f:
-            data = jsonc.load(f)
+
+        with path.open(encoding=encoding) as file:
+            data = jsonc.load(file)
         return cls.model_validate(data)
 
     def save_toml(
@@ -316,7 +380,8 @@ class Confdantic(BaseModel):
         comments: bool = True,
         serialize_unsupported: bool = False,
     ) -> None:
-        if os.path.exists(filepath) and not overwrite:
+        path = Path(filepath)
+        if path.exists() and not overwrite:
             raise FileExistsError(filepath)
         data = self.model_dump(exclude_none=True)
         if serialize_unsupported:
@@ -325,9 +390,8 @@ class Confdantic(BaseModel):
         toml_doc = tomlkit.loads(toml_string)
 
         if not comments:
-            with open(filepath, "w") as f:
-                tomlkit.dump(toml_doc, f)
-                return
+            _write_toml_document(path, toml_doc)
+            return
 
         for name, field in self.__class__.model_fields.items():
             try:
@@ -335,33 +399,13 @@ class Confdantic(BaseModel):
             except KeyError:
                 continue
 
-            comment = get_comment(field, format="toml")
+            comment = get_comment(field, fmt="toml")
             if comment:
                 item.comment(comment)
 
-            try:
-                is_base_model = is_base_model = isinstance(field.annotation, type) and issubclass(
-                    field.annotation, BaseModel
-                )
-            except TypeError:
-                is_base_model = False
+            _add_nested_toml_comments(field, toml_doc[name])
 
-            if is_base_model and field.annotation:
-                subfield = field.annotation
-                for subfname, f in subfield.model_fields.items():
-                    table: Table = toml_doc[name]
-                    try:
-                        subitem = table.item(subfname)
-                    except KeyError:
-                        subitem = None
-                    if subitem is None:
-                        continue
-                    comment = get_comment(f, format="toml")
-                    if comment and hasattr(subitem, "comment"):
-                        subitem.comment(comment)
-
-        with open(filepath, "w") as f:
-            tomlkit.dump(toml_doc, f)
+        _write_toml_document(path, toml_doc)
 
     def save_json(
         self,
@@ -369,13 +413,15 @@ class Confdantic(BaseModel):
         overwrite: bool = True,
         serialize_unsupported: bool = False,
     ) -> None:
-        if os.path.exists(filepath) and not overwrite:
+        path = Path(filepath)
+        if path.exists() and not overwrite:
             raise FileExistsError(filepath)
         data = self.model_dump()
         if serialize_unsupported:
             data = to_jsonable_python(data, fallback=self._json_fallback)
-        with open(filepath, "w") as f:
-            json.dump(data, f, indent=4, default=str)
+
+        with path.open("w") as file:
+            json.dump(data, file, indent=4, default=str)
 
     def save_yaml(
         self,
@@ -384,20 +430,24 @@ class Confdantic(BaseModel):
         comments: bool = True,
         serialize_unsupported: bool = False,
     ) -> None:
-        if os.path.exists(filepath) and not overwrite:
+        path = Path(filepath)
+        if path.exists() and not overwrite:
             raise FileExistsError(filepath)
 
         yaml = YAML()
         yaml.indent(mapping=2, sequence=4, offset=2)
+
         yaml.preserve_quotes = True
 
         data = self.model_dump()
         if serialize_unsupported:
             data = to_jsonable_python(data, fallback=self._json_fallback)
+
         if comments:
             data = self._to_commented_yaml(data)
-        with open(filepath, "w") as f:
-            yaml.dump(data, f)
+
+        with path.open("w") as file:
+            yaml.dump(data, file)
 
     def save_jsonc(
         self,
@@ -408,7 +458,8 @@ class Confdantic(BaseModel):
         comment_position: CommentPosition = "end_of_line",
         indent: int = 4,
     ) -> None:
-        if os.path.exists(filepath) and not overwrite:
+        path = Path(filepath)
+        if path.exists() and not overwrite:
             raise FileExistsError(filepath)
 
         data = self.model_dump()
@@ -426,8 +477,8 @@ class Confdantic(BaseModel):
                 position=comment_position,
             )
 
-        with open(filepath, "w") as f:
-            f.write(json_string)
+        with path.open("w") as file:
+            file.write(json_string)
 
 
 __all__ = ["Confdantic"]

@@ -1,6 +1,6 @@
 [project]
 name = "confdantic"
-version = "0.1.4"
+version = "0.1.5"
 description = "Generate user-friendly configuration files from Pydantic models"
 authors = [{ name = "zigai", email = "ziga.ivansek@gmail.com" }]
 license = { file = "LICENSE" }
@@ -8,7 +8,7 @@ readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
     "json-with-comments>=1.0.0",
-    "objinspect>=0.4.0",
+    "objinspect>=0.4.2",
     "pydantic>=2.12.3",
     "ruamel-yaml>=0.18.6",
     "toml>=0.10.2",
@@ -54,8 +54,17 @@ keywords = [
 ]
 
 [project.optional-dependencies]
-test = ["pytest", "coverage"]
-dev = ["pytest", "coverage", "ruff", "pre-commit", "mypy", "codespell"]
+test = ["pytest>=9.0.2", "coverage>=7.13.5"]
+dev = [
+    "pytest>=9.0.2",
+    "coverage>=7.13.5",
+    "ruff==0.15.8",
+    "pre-commit>=4.5.1",
+    "mypy>=1.19.1",
+    "codespell>=2.4.2",
+    "rattle-lint>=1.0.4",
+    "rattle-blank-lines>=0.2.4",
+]
 
 [project.urls]
 Repository = "https://github.com/zigai/confdantic"
@@ -109,85 +118,125 @@ warn_unused_configs = true
 strict_equality = true
 ignore_missing_imports = true
 
+[tool.codespell]
+skip = '.git,uv.lock'
+
+[tool.rattle]
+root = true
+enable = ["rattle_blank_lines.rules"]
+disable = ["rattle.rules"]
+
 [tool.ruff]
 line-length = 100
 
 [tool.ruff.lint]
-select = [
-    "F",       # Pyflakes
-    "E",       # Pycodestyle (Error)
-    'I',       # isort
-    'D',       # pydocstyle
-    'D213',    # pydocstyle
-    'UP',      # pyupgrade
-    'YTT',     # flake8-2020
-    'B',       # flake8-bugbear
-    "PLE",     # pylint
-    'PYI006',
-    'PYI019',
-    'PYI024',
-    'PYI030',
-    'PYI062',
-    'PYI063',
-    'PYI066',
-    "RUF001",
-    "RUF002",
-    "RUF003",
-    "RUF005",
-    "RUF006",
-    "RUF012",
-    "RUF013",
-    "RUF016",
-    "RUF017",
-    "RUF018",
-    "RUF019",
-    "RUF020",
-    "RUF021",
-    "RUF024",
-    "RUF026",
-    "RUF030",
-    "RUF032",
-    "RUF033",
-    "RUF034",
-    "TRY002",
-    "TRY004",
-    "TRY201",
-    "TRY300",
-    "TRY301",
-    "TRY400",
-    "PERF101",
-    "RET503",
-    "LOG001",
-    "LOG002",
-]
+select = ["ALL"]
 ignore = [
+    "ERA",
+    "FBT002",
+    "COM",
+    "CPY",
+    "DJ",
+    "ANN003",
+    "FIX",
     "D100",
     "D101",
     "D102",
     "D103",
     "D104",
-    'D105',
-    'D106',
-    'D107',
-    'D205',
+    "D105",
+    "D106",
+    "D107",
+    "D205",
+    "D203",
     "D212",
-    'D415',
-    'E501',
-    'B011',
-    'B028',
-    'B904',
-    'PIE804',
-    "N802",
-    "N803",
+    "E501",
+    "PIE804",
+    "S101",
+    "EM101",
+    "PYI041",
+    "PYI051",
+    "PYI046",
+    "PYI047",
+    "PYI049",
+    "PYI053",
+    "PYI054",
+    "RET501",
+    "SIM910",
+    "N812",
+    "PLC0415",
+    "PLR0904",
+    "PLR0913",
+    "PLR2004",
+    "PLR1711",
+    "TRY003",
+    "T20",
+    "SIM105",
+    "RET504",
+    "PLR0912",
+    "PLR0915",
+    "SIM105",
+    "TD",
+    "TC001",
+    "TC002",
+    "TC003",
+    "TC006",
+    "PLW0603",
+    "EM102",
+    "PLW2901",
+    "RSE102",
+    "PGH004",
     "N806",
-    "UP007",
+    "FBT001",
 ]
-exclude = ["build", "tests/**"]
+exclude = ["build"]
 
 [tool.ruff.lint.per-file-ignores]
 "__init__.py" = [
     "F401", # Unused import
     "E402", # Module import not at top of file
+]
+"**/tests/**/*.py" = [
+    "S104",
+    "S105",
+    "S106",
+    "TRY004",
+    "RUF003",
+    "RUF012",
+    "UP031",
+    "SLF001",
+    "ARG",
+    "N806",
+    "ANN001",
+    "ANN201",
+    "ANN202",
+    "ANN204",
+    "ANN401",
+    "S",
+    "SLF001",
+    "INP001",
+    "PLW0108",
+    "EM102",
+    "FBT001",
+    "SIM300",
+]
+"examples/*.py" = ["INP001"]
+
+[tool.ruff.lint.pep8-naming]
+classmethod-decorators = [
+    "pydantic.validator",
+    "declared_attr",
+    "expression",
+    "comparator",
+]
+
+[tool.ruff.lint.flake8-builtins]
+ignorelist = ["id", "input"]
+
+[tool.ruff.lint.flake8-type-checking]
+runtime-evaluated-base-classes = [
+    "pydantic.BaseModel",
+    "sqlalchemy.orm.DeclarativeBase",
 ]
 
 [tool.ruff.format]
@@ -201,6 +250,3 @@ known-first-party = ["confdantic", "tests"]
 
 [tool.ruff.lint.pydocstyle]
 convention = "google"
-
-[tool.codespell]
-skip = '.git,uv.lock'

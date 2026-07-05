@@ -11,5 +11,5 @@ repos:
     rev: v0.15.8
     hooks:
       - id: ruff-check
-        args: [--fix, --exit-zero]
       - id: ruff-format
+        args: [--check]

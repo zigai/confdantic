@@ -3,7 +3,7 @@
 ## Environment
 
 For local development, you need Python 3.10 or later installed.
-We use [uv](https://docs.astral.sh/uv/) for project management, [Hatch](https://hatch.pypa.io/latest/) for environment management, and [just](https://github.com/casey/just) as our command runner.
+We use [uv](https://docs.astral.sh/uv/) for project and environment management, and [just](https://github.com/casey/just) as our command runner.
 
 ## Dependencies
 
@@ -16,7 +16,7 @@ just sync
 or
 
 ```sh
-uv sync --extra dev
+uv sync --group dev
 ```
 
 ## Code checking
@@ -49,11 +49,11 @@ just format
 
 ## Testing
 
-We use [pytest](https://docs.pytest.org/en/stable/) for testing. You have two options for running tests:
+We use [pytest](https://docs.pytest.org/en/stable/) for testing. The default Python version is configured in `.python-version`; the local test matrix is configured in `.python-versions`.
 
 ```sh
-# Run tests on your current Python version
-uv run --extra test pytest -v
+# Run tests on the default Python version
+uv run pytest -v
 
 # Run tests across all supported Python versions
 just test

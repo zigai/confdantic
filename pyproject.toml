@@ -3,12 +3,13 @@ name = "confdantic"
 version = "0.1.5"
 description = "Generate user-friendly configuration files from Pydantic models"
 authors = [{ name = "zigai", email = "ziga.ivansek@gmail.com" }]
-license = { file = "LICENSE" }
+license = "MIT"
+license-files = ["LICENSE"]
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
     "json-with-comments>=1.0.0",
-    "objinspect>=0.4.2",
+    "objinspect>=0.4.3",
     "pydantic>=2.12.3",
     "ruamel-yaml>=0.18.6",
     "toml>=0.10.2",
@@ -16,7 +17,6 @@ dependencies = [
 ]
 
 classifiers = [
-    "License :: OSI Approved :: MIT License",
     "Typing :: Typed",
     "Operating System :: OS Independent",
     "Intended Audience :: Developers",
@@ -54,16 +54,15 @@ keywords = [
 ]
 
 [project.optional-dependencies]
-test = ["pytest>=9.0.2", "coverage>=7.13.5"]
+test = ["pytest>=9.0.3", "coverage>=7.14.1"]
 dev = [
-    "pytest>=9.0.2",
-    "coverage>=7.13.5",
-    "ruff==0.15.8",
-    "pre-commit>=4.5.1",
-    "mypy>=1.19.1",
+    "pytest>=9.0.3",
+    "coverage>=7.14.1",
+    "ruff==0.15.16",
+    "pre-commit>=4.6.0",
+    "pyrefly>=1.0.0",
     "codespell>=2.4.2",
-    "rattle-lint>=1.0.4",
-    "rattle-blank-lines>=0.2.4",
+    "rattle-lint>=2.5.1",
 ]
 
 [project.urls]
@@ -72,22 +71,12 @@ Issues = "https://github.com/zigai/confdantic/issues"
 Homepage = "https://github.com/zigai/confdantic"
 
 [build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"
+requires = ["uv_build>=0.11.25,<0.12.0"]
+build-backend = "uv_build"
 
-[tool.hatch.envs.test]
-features = ["test"]
-installer = "uv"
-
-[[tool.hatch.envs.test.matrix]]
-python = ["3.10", "3.11", "3.12", "3.13", "3.14"]
-
-[tool.hatch.envs.test.scripts]
-test = "pytest {args}"
-cov = "coverage run -m pytest {args}"
-
-[tool.hatch.build.targets.wheel]
-packages = ["confdantic"]
+[tool.uv.build-backend]
+module-name = "confdantic"
+module-root = ""
 
 [tool.coverage.run]
 source = ["confdantic"]
@@ -102,29 +91,52 @@ exclude_lines = [
 ]
 omit = ["tests/*", "tests/**"]
 
-[tool.mypy]
-python_version = "3.10"
-files = ["confdantic"]
-exclude = ["^tests/"]
-
-disallow_untyped_defs = true
-disallow_untyped_calls = true
-disallow_any_generics = true
-no_implicit_optional = true
-warn_unused_ignores = true
-warn_redundant_casts = true
-warn_return_any = true
-warn_unused_configs = true
-strict_equality = true
-ignore_missing_imports = true
+[tool.pyrefly]
+project-includes = ["confdantic"]
+project-excludes = ["tests/**"]
+disable-project-excludes-heuristics = true
+search-path = ["."]
+disable-search-path-heuristics = true
+python-version = "3.10"
+enabled-ignores = ["type", "pyrefly"]
+use-ignore-files = false
+check-unannotated-defs = true
+infer-return-types = "checked"
+infer-with-first-use = true
+strict-callable-subtyping = false
+spec-compliant-overloads = false
 
 [tool.codespell]
 skip = '.git,uv.lock'
 
 [tool.rattle]
 root = true
-enable = ["rattle_blank_lines.rules"]
-disable = ["rattle.rules"]
+enable = [
+    "blank-line-after-control-block",
+    "blank-line-after-terminal-control-block",
+    "blank-line-before-branch",
+    "blank-line-before-unrelated-block",
+    "no-suite-leading-trailing-blank-lines",
+    "module-all-at-bottom",
+    "no-underscore-all-exports",
+    "forbidden-call",
+    "no-relative-imports",
+    "no-underscore-import-aliases",
+    "no-unsafe-tempfile-factories",
+    "no-annotated-self",
+    "no-exception-message-variables",
+    "no-str-exception-translation",
+    "no-underscore-class",
+    "public-method-order",
+    "no-bare-object-annotations",
+    "no-named-tuple",
+    "no-static-if-condition",
+    "sorted-attributes",
+    "use-callable-ellipsis",
+]
+
+[tool.rattle.options."forbidden-call"]
+forbidden_calls = ["typing.cast"]
 
 [tool.ruff]
 line-length = 100
@@ -250,3 +262,10 @@ known-first-party = ["confdantic", "tests"]
 
 [tool.ruff.lint.pydocstyle]
 convention = "google"
+
+[tool.uv]
+default-groups = ["test"]
+
+[dependency-groups]
+test = ["pytest>=9.0.3", "coverage>=7.14.1"]
+dev = [{include-group = "test"}, "ruff==0.15.16", "pre-commit>=4.6.0", "pyrefly>=1.0.0", "codespell>=2.4.2", "rattle-lint>=2.5.1"]

@@ -1,7 +1,9 @@
+from __future__ import annotations
+
 import json
 import re
 from pathlib import Path, PurePath
-from typing import Literal
+from typing import Literal, TypeAlias
 
 import jsonc
 import toml
@@ -16,6 +18,9 @@ from tomlkit.items import Table
 from typing_extensions import Self
 
 CommentPosition = Literal["end_of_line", "above_field"]
+ConfigScalar: TypeAlias = "None | bool | int | float | str | PurePath"
+ConfigValue: TypeAlias = "ConfigScalar | list[ConfigValue] | dict[str, ConfigValue]"
+AnnotationValue: TypeAlias = "ConfigValue | type | None"
 
 
 def sanitize_comment(comment: str) -> str:
@@ -27,7 +32,7 @@ def file_ext(filepath: str) -> str:
     return Path(filepath).suffix.lower().removeprefix(".")
 
 
-def _base_model_annotation(annotation: object) -> type[BaseModel] | None:
+def _base_model_annotation(annotation: AnnotationValue) -> type[BaseModel] | None:
     try:
         if isinstance(annotation, type) and issubclass(annotation, BaseModel):
             return annotation
@@ -66,6 +71,7 @@ def get_comment(
 
     if not field.description:
         return choices_str
+
     comment = sanitize_comment(field.description)
     if choices_str:
         comment += " | " + choices_str
@@ -213,7 +219,7 @@ class Confdantic(BaseModel):
     )
 
     @staticmethod
-    def _json_fallback(value: object) -> str:
+    def _json_fallback(value: ConfigValue) -> str:
         if isinstance(value, PurePath):
             return value.as_posix()
 
@@ -224,7 +230,7 @@ class Confdantic(BaseModel):
         data = self.model_dump()
         return self._to_commented_yaml(data)
 
-    def _to_commented_yaml(self, obj: object) -> object:
+    def _to_commented_yaml(self, obj: ConfigValue) -> ConfigValue | CommentedMap | CommentedSeq:
         if isinstance(obj, dict):
             cm = CommentedMap()
             for key, value in obj.items():
@@ -268,6 +274,7 @@ class Confdantic(BaseModel):
         path = Path(filepath)
         if not path.exists():
             raise FileNotFoundError(filepath)
+
         ext = file_ext(filepath)
         match ext:
             case "toml" | "tml":
@@ -383,6 +390,7 @@ class Confdantic(BaseModel):
         path = Path(filepath)
         if path.exists() and not overwrite:
             raise FileExistsError(filepath)
+
         data = self.model_dump(exclude_none=True)
         if serialize_unsupported:
             data = to_jsonable_python(data, fallback=self._json_fallback)
@@ -416,6 +424,7 @@ class Confdantic(BaseModel):
         path = Path(filepath)
         if path.exists() and not overwrite:
             raise FileExistsError(filepath)
+
         data = self.model_dump()
         if serialize_unsupported:
             data = to_jsonable_python(data, fallback=self._json_fallback)

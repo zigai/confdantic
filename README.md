@@ -37,6 +37,7 @@ from typing import Literal
 from pydantic import Field
 from confdantic import Confdantic
 
+
 class DatabaseConfig(Confdantic):
     host: str = Field(
         "localhost",
@@ -49,6 +50,7 @@ class DatabaseConfig(Confdantic):
     username: str
     password: str
 
+
 class ApplicationConfig(Confdantic):
     debug: bool = Field(False, description="Enable debug mode")
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = Field(
@@ -59,6 +61,7 @@ class ApplicationConfig(Confdantic):
         default_factory=list,
         description="A list of host/domain names that this application can serve.",
     )
+
 
 config = ApplicationConfig(
     database=DatabaseConfig(username="admin", password="secret"),

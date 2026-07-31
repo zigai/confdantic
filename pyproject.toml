@@ -58,7 +58,7 @@ test = ["pytest>=9.0.3", "coverage>=7.14.1"]
 dev = [
     "pytest>=9.0.3",
     "coverage>=7.14.1",
-    "ruff==0.15.16",
+    "ruff==0.16.1",
     "pre-commit>=4.6.0",
     "pyrefly>=1.0.0",
     "codespell>=2.4.2",
@@ -179,6 +179,7 @@ ignore = [
     "PLC0415",
     "PLR0904",
     "PLR0913",
+    "PLR0917",
     "PLR2004",
     "PLR1711",
     "TRY003",
@@ -268,4 +269,4 @@ default-groups = ["test"]
 
 [dependency-groups]
 test = ["pytest>=9.0.3", "coverage>=7.14.1"]
-dev = [{include-group = "test"}, "ruff==0.15.16", "pre-commit>=4.6.0", "pyrefly>=1.0.0", "codespell>=2.4.2", "rattle-lint>=2.5.1"]
+dev = [{include-group = "test"}, "ruff==0.16.1", "pre-commit>=4.6.0", "pyrefly>=1.0.0", "codespell>=2.4.2", "rattle-lint>=2.5.1"]

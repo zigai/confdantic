@@ -18,7 +18,7 @@ from tomlkit.items import Table
 from typing_extensions import Self
 
 CommentPosition = Literal["end_of_line", "above_field"]
-ConfigScalar: TypeAlias = "None | bool | int | float | str | PurePath"
+ConfigScalar: TypeAlias = "bool | int | float | str | PurePath | None"
 ConfigValue: TypeAlias = "ConfigScalar | list[ConfigValue] | dict[str, ConfigValue]"
 AnnotationValue: TypeAlias = "ConfigValue | type | None"
 

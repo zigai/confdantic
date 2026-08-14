@@ -2,7 +2,7 @@
 
 [![Tests](https://github.com/zigai/confdantic/actions/workflows/tests.yml/badge.svg)](https://github.com/zigai/confdantic/actions/workflows/tests.yml)
 [![PyPI version](https://badge.fury.io/py/confdantic.svg)](https://badge.fury.io/py/confdantic)
-![Supported versions](https://img.shields.io/badge/python-3.10+-blue.svg)
+![Supported versions](https://img.shields.io/badge/python-3.11+-blue.svg)
 [![Downloads](https://static.pepy.tech/badge/confdantic)](https://pepy.tech/project/confdantic)
 [![license](https://img.shields.io/github/license/zigai/confdantic.svg)](https://github.com/zigai/confdantic/blob/master/LICENSE)
 

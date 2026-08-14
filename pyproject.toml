@@ -6,7 +6,7 @@ authors = [{ name = "zigai", email = "ziga.ivansek@gmail.com" }]
 license = "MIT"
 license-files = ["LICENSE"]
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 dependencies = [
     "json-with-comments>=1.0.0",
     "objinspect>=0.4.3",
@@ -26,7 +26,6 @@ classifiers = [
     "Programming Language :: Python",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3 :: Only",
-    "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
@@ -97,7 +96,7 @@ project-excludes = ["tests/**"]
 disable-project-excludes-heuristics = true
 search-path = ["."]
 disable-search-path-heuristics = true
-python-version = "3.10"
+python-version = "3.11"
 enabled-ignores = ["type", "pyrefly"]
 use-ignore-files = false
 check-unannotated-defs = true

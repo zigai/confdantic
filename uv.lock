@@ -64,7 +64,6 @@ dependencies = [
     { name = "objinspect" },
     { name = "pydantic" },
     { name = "ruamel-yaml" },
-    { name = "toml" },
     { name = "tomlkit" },
 ]
 
@@ -113,7 +112,6 @@ requires-dist = [
     { name = "rattle-lint", marker = "extra == 'dev'", specifier = ">=2.5.1" },
     { name = "ruamel-yaml", specifier = ">=0.18.6" },
     { name = "ruff", marker = "extra == 'dev'", specifier = "==0.16.1" },
-    { name = "toml", specifier = ">=0.10.2" },
     { name = "tomlkit", specifier = ">=0.12.3" },
 ]
 provides-extras = ["test", "dev"]

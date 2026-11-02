@@ -1,7 +1,15 @@
+from pathlib import Path
+
 import pytest
 from pydantic import BaseModel, Field
 
-from confdantic import Confdantic
+from confdantic import (
+    Confdantic,
+    ConfigValidationError,
+    Contribution,
+    UnknownKeyError,
+    UnsupportedFormatError,
+)
 from tests.models import ExampleModel
 
 
@@ -13,7 +21,7 @@ def test_load_nonexistent_file():
 def test_load_unsupported_format(tmp_path):
     filepath = tmp_path / "test.txt"
     filepath.touch()
-    with pytest.raises(ValueError, match=r"Unknown file extension: txt"):
+    with pytest.raises(UnsupportedFormatError):
         ExampleModel.load(str(filepath))
 
 
@@ -30,7 +38,7 @@ def test_save_unsupported_format(tmp_path, sample_data):
     model = ExampleModel(**sample_data)
     filepath = tmp_path / "test.txt"
 
-    with pytest.raises(ValueError, match=r"Unknown file extension: txt"):
+    with pytest.raises(UnsupportedFormatError):
         model.save(str(filepath))
 
 
@@ -88,3 +96,64 @@ def test_load_with_bom(tmp_path, extension, content):
     filepath.write_bytes(content)
     model = BomModel.load(str(filepath))
     assert model.name == "x"
+
+
+def test_confdantic_init_and_layered_features(tmp_path):
+    from pathlib import Path
+
+    class App(Confdantic):
+        host: str = "127.0.0.1"
+        port: int = 8080
+
+    tpl_path = Path(tmp_path) / "app.toml"
+    App.init(tpl_path)
+    assert tpl_path.exists()
+    assert "port = 8080" in tpl_path.read_text()
+
+    # Classmethod in-place update
+    App.set_key(tpl_path, "port", 9090)
+    assert "port = 9090" in tpl_path.read_text()
+
+    # Classmethod load with a Path object and a flag contribution
+    loaded = App.load(tpl_path, contributions=[Contribution({"host": "0.0.0.0"})])
+    assert loaded.port == 9090
+    assert loaded.host == "0.0.0.0"
+
+
+class Server(Confdantic):
+    host: str = "localhost"
+    port: int = 8080
+
+
+@pytest.mark.parametrize(
+    ("save_name", "load_name", "suffix", "marker"),
+    [
+        ("save_toml", "load_toml", ".toml", 'host = "example"'),
+        ("save_yaml", "load_yaml", ".yaml", "host: example"),
+        ("save_json", "load_json", ".json", '"host": "example"'),
+        ("save_jsonc", "load_jsonc", ".jsonc", '"host": "example"'),
+    ],
+)
+def test_format_methods_use_their_format_whatever_the_suffix(
+    tmp_path: Path, save_name: str, load_name: str, suffix: str, marker: str
+):
+    config = Server(host="example", port=1)
+    other = ".yaml" if suffix != ".yaml" else ".toml"
+    for name in ("config.conf", f"config{other}", "config"):
+        target = tmp_path / name
+        getattr(config, save_name)(target)
+        assert marker in target.read_text(encoding="utf-8")
+        assert getattr(Server, load_name)(target) == config
+
+
+def test_class_set_key_validates_against_the_class(tmp_path: Path):
+    target = tmp_path / "config.toml"
+    target.write_text("# server\nport = 8080\n", encoding="utf-8")
+    before = target.read_bytes()
+
+    with pytest.raises(ConfigValidationError):
+        Server.set_key(target, "port", "not-a-number")
+    with pytest.raises(UnknownKeyError):
+        Server.set_keys(target, {"port": 1, "prot": 2})
+
+    assert target.read_bytes() == before

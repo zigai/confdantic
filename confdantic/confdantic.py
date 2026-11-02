@@ -1,26 +1,27 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from pathlib import Path, PurePath
-from typing import Self
+from typing import TYPE_CHECKING, Any, Self
 
 from pydantic import BaseModel, ConfigDict
 from ruamel.yaml.comments import CommentedMap, CommentedSeq
 
-from confdantic.comments import get_comment, sanitize_comment  # noqa: F401 - compatibility exports
+from confdantic.editing import set_key, set_keys
 from confdantic.formats import json as json_format
 from confdantic.formats import jsonc as jsonc_format
 from confdantic.formats import toml as toml_format
 from confdantic.formats import yaml as yaml_format
-from confdantic.formats.jsonc import (  # noqa: F401 - compatibility export
-    CommentPosition,
-    insert_jsonc_comments,
-)
-from confdantic.values import ConfigValue, stringify_unsupported
+from confdantic.formats.base import RenderOptions
+from confdantic.keypath import KeyPath
+from confdantic.loader import load as load_layers
+from confdantic.persistence import atomic_write_bytes, builtin_writer, encode_model
+from confdantic.persistence import init as init_file
+from confdantic.persistence import save as save_file
+from confdantic.plan import get_model_plan
 
-
-def file_ext(filepath: str) -> str:
-    """Return the normalized suffix retained for compatibility with earlier releases."""
-    return Path(filepath).suffix.lower().removeprefix(".")
+if TYPE_CHECKING:
+    from confdantic.formats.jsonc import CommentPosition
 
 
 class Confdantic(BaseModel):
@@ -33,35 +34,24 @@ class Confdantic(BaseModel):
 
     def to_commented_yaml(self) -> CommentedMap | CommentedSeq:
         """Convert this model to a comment-aware YAML value."""
-        return yaml_format.build_commented_value(
-            self.model_dump(),
-            self.__class__.model_fields,
-            self.__class__,
-        )
+        plan = get_model_plan(type(self))
+        document = plan.to_document(self.model_dump(mode="python"), model=self)
+
+        return yaml_format.commented_value(document, plan)
 
     @classmethod
-    def load(cls, filepath: str, encoding: str = "utf-8-sig") -> Self:
-        """Load and validate a model using the format identified by the file extension."""
-        path = Path(filepath)
-        if not path.exists():
-            raise FileNotFoundError(filepath)
+    def load(cls, filepath: Path | str | None = None, **options: Any) -> Self:  # noqa: ANN401
+        """Load through `confdantic.load`, taking `formats` from the file suffix when omitted."""
+        if filepath is not None and "formats" not in options:
+            extension = Path(filepath).suffix.lower()
+            if extension:
+                options["formats"] = (extension,)
 
-        extension = path.suffix.lower().removeprefix(".")
-        match extension:
-            case "toml" | "tml":
-                return cls.load_toml(filepath)
-            case "yaml" | "yml":
-                return cls.load_yaml(filepath)
-            case "json":
-                return cls.load_json(filepath, encoding=encoding)
-            case "jsonc" | "json5":
-                return cls.load_jsonc(filepath, encoding=encoding)
-            case _:
-                raise ValueError(f"Unknown file extension: {extension}")
+        return load_layers(cls, filepath, **options)
 
     def save(
         self,
-        filepath: str,
+        filepath: Path | str,
         overwrite: bool = True,
         comments: bool = True,
         serialize_unsupported: bool = False,
@@ -69,140 +59,113 @@ class Confdantic(BaseModel):
         indent: int = 4,
     ) -> None:
         """Save this model using the format identified by the file extension."""
-        path = Path(filepath)
-        if path.exists() and not overwrite:
-            raise FileExistsError(filepath)
-
-        extension = path.suffix.lower().removeprefix(".")
-        match extension:
-            case "toml" | "tml":
-                self.save_toml(
-                    filepath,
-                    overwrite=overwrite,
-                    comments=comments,
-                    serialize_unsupported=serialize_unsupported,
-                )
-            case "yaml" | "yml":
-                self.save_yaml(
-                    filepath=filepath,
-                    overwrite=overwrite,
-                    comments=comments,
-                    serialize_unsupported=serialize_unsupported,
-                )
-            case "json":
-                self.save_json(
-                    filepath,
-                    overwrite=overwrite,
-                    serialize_unsupported=serialize_unsupported,
-                    indent=indent,
-                )
-            case "jsonc" | "json5":
-                self.save_jsonc(
-                    filepath,
-                    overwrite=overwrite,
-                    comments=comments,
-                    serialize_unsupported=serialize_unsupported,
-                    comment_position=comment_position,
-                    indent=indent,
-                )
-            case _:
-                raise ValueError(f"Unknown file extension: {extension}")
+        save_file(
+            self,
+            filepath,
+            overwrite=overwrite,
+            comments=comments,
+            serialize_unsupported=serialize_unsupported,
+            comment_position=comment_position,
+            indent=indent,
+        )
 
     @classmethod
-    def load_yaml(cls, filepath: str) -> Self:
-        return cls.model_validate(yaml_format.load(Path(filepath)))
+    def load_yaml(cls, filepath: Path | str) -> Self:
+        return load_layers(cls, filepath, formats=(yaml_format.YAML(),))
 
     @classmethod
-    def load_toml(cls, filepath: str) -> Self:
-        return cls.model_validate(toml_format.load(Path(filepath)))
+    def load_toml(cls, filepath: Path | str) -> Self:
+        return load_layers(cls, filepath, formats=(toml_format.TOML(),))
 
     @classmethod
-    def load_json(cls, filepath: str, encoding: str = "utf-8-sig") -> Self:
-        return cls.model_validate(json_format.load(Path(filepath), encoding))
+    def load_json(cls, filepath: Path | str, encoding: str = "utf-8-sig") -> Self:
+        return load_layers(cls, filepath, formats=(json_format.JSON(encoding),))
 
     @classmethod
-    def load_jsonc(cls, filepath: str, encoding: str = "utf-8-sig") -> Self:
-        return cls.model_validate(jsonc_format.load(Path(filepath), encoding))
+    def load_jsonc(cls, filepath: Path | str, encoding: str = "utf-8-sig") -> Self:
+        return load_layers(cls, filepath, formats=(jsonc_format.JSONC(encoding),))
 
     def save_toml(
         self,
-        filepath: str,
+        filepath: Path | str,
         overwrite: bool = True,
         comments: bool = True,
         serialize_unsupported: bool = False,
     ) -> None:
-        path = Path(filepath)
-        if path.exists() and not overwrite:
-            raise FileExistsError(filepath)
-
-        content = toml_format.render(
-            self.model_dump(exclude_none=True),
-            self.__class__,
-            comments,
-            serialize_unsupported,
-        )
-        path.write_text(content, encoding="utf-8")
+        options = RenderOptions(comments=comments, serialize_unsupported=serialize_unsupported)
+        self._write("toml", filepath, overwrite, options)
 
     def save_json(
         self,
-        filepath: str,
+        filepath: Path | str,
         overwrite: bool = True,
         serialize_unsupported: bool = False,
         indent: int = 4,
     ) -> None:
-        path = Path(filepath)
-        if path.exists() and not overwrite:
-            raise FileExistsError(filepath)
-
-        content = json_format.render(self.model_dump(), serialize_unsupported, indent)
-        path.write_text(content, encoding="utf-8")
+        options = RenderOptions(serialize_unsupported=serialize_unsupported, indent=indent)
+        self._write("json", filepath, overwrite, options)
 
     def save_yaml(
         self,
-        filepath: str,
+        filepath: Path | str,
         overwrite: bool = True,
         comments: bool = True,
         serialize_unsupported: bool = False,
     ) -> None:
-        path = Path(filepath)
-        if path.exists() and not overwrite:
-            raise FileExistsError(filepath)
-
-        content = yaml_format.render(
-            self.model_dump(),
-            self.__class__,
-            comments,
-            serialize_unsupported,
-        )
-        path.write_text(content, encoding="utf-8")
+        options = RenderOptions(comments=comments, serialize_unsupported=serialize_unsupported)
+        self._write("yaml", filepath, overwrite, options)
 
     def save_jsonc(
         self,
-        filepath: str,
+        filepath: Path | str,
         overwrite: bool = True,
         comments: bool = True,
         serialize_unsupported: bool = False,
         comment_position: CommentPosition = "end_of_line",
         indent: int = 4,
     ) -> None:
+        options = RenderOptions(comments, serialize_unsupported, comment_position, indent)
+        self._write("jsonc", filepath, overwrite, options)
+
+    @classmethod
+    def set_key(cls, filepath: Path | str, key: str | KeyPath, value: Any) -> None:  # noqa: ANN401
+        """Edit a configuration file in-place at `key`, validating against this model."""
+        set_key(filepath, key, value, model=cls)
+
+    @classmethod
+    def set_keys(cls, filepath: Path | str, updates: Mapping[str | KeyPath, Any]) -> None:
+        """Edit multiple keys in a configuration file in-place, validating against this model."""
+        set_keys(filepath, updates, model=cls)
+
+    @classmethod
+    def init(
+        cls,
+        filepath: Path | str,
+        *,
+        overwrite: bool = False,
+        schema_url: str | None = None,
+        comments: bool = True,
+        mode: int | None = None,
+    ) -> None:
+        """Generate and atomically save an initial configuration template for this model."""
+        init_file(
+            cls,
+            filepath,
+            overwrite=overwrite,
+            schema_url=schema_url,
+            comments=comments,
+            mode=mode,
+        )
+
+    def _write(
+        self, format_name: str, filepath: Path | str, overwrite: bool, options: RenderOptions
+    ) -> None:
         path = Path(filepath)
         if path.exists() and not overwrite:
             raise FileExistsError(filepath)
 
-        content = jsonc_format.render(
-            self.model_dump(),
-            self.__class__,
-            comments,
-            serialize_unsupported,
-            comment_position,
-            indent,
-        )
-        path.write_text(content, encoding="utf-8")
-
-    @staticmethod
-    def _json_fallback(value: ConfigValue) -> str:
-        """Retain the earlier unsupported-value fallback for subclasses using it directly."""
-        return stringify_unsupported(value)
+        encoded = encode_model(self, builtin_writer(format_name), options)
+        atomic_write_bytes(path, encoded, overwrite=overwrite)
 
 
 __all__ = ["Confdantic"]

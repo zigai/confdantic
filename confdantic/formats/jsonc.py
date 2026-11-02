@@ -2,83 +2,49 @@ from __future__ import annotations
 
 import json
 import re
-from pathlib import Path
-from typing import Any, Literal, TypeAlias
+from collections.abc import Mapping, Sequence
+from typing import TYPE_CHECKING, Any, Literal, TypeAlias
 
 import jsonc
 from pydantic import BaseModel
-from pydantic.fields import FieldInfo
 
-from confdantic.annotations import ModelFields, unwrapped_model
-from confdantic.comments import get_comment
+from confdantic.errors import MalformedDocumentError
+from confdantic.formats.base import RenderOptions, ValueLocation
+from confdantic.formats.json import json_location, reject_duplicate_keys, reject_nonfinite
+from confdantic.formats.json_edit import edit_jsonc_bytes
+from confdantic.io import decode_utf8_sig
+from confdantic.plan import get_model_plan
 from confdantic.values import ConfigValue, json_default, serialize_value
+
+if TYPE_CHECKING:
+    from confdantic.plan import ModelPlan
 
 CommentPosition = Literal["end_of_line", "above_field"]
 JsonContext: TypeAlias = tuple[
     Literal["object", "array"],
-    ModelFields | None,
     type[BaseModel] | None,
 ]
 KEY_PATTERN = re.compile(r'^(\s*)"((?:[^"\\]|\\.)*)"\s*:')
 
 
-def load(path: Path, encoding: str) -> Any:  # noqa: ANN401 - parsed JSONC is a dynamic boundary.
-    return jsonc.loads(path.read_text(encoding=encoding))
-
-
-def render(
-    data: ConfigValue,
-    model: type[BaseModel],
-    comments: bool,
-    serialize_unsupported: bool,
-    position: CommentPosition,
-    indent: int,
-) -> str:
-    serialized = serialize_value(data, serialize_unsupported)
-    json_string = json.dumps(serialized, indent=indent, default=json_default)
-    if not comments:
-        return json_string
-
-    return insert_jsonc_comments(
-        json_string,
-        model.model_fields,
-        position=position,
-        root_model=model,
-    )
-
-
 def insert_jsonc_comments(
     json_string: str,
-    model_fields: ModelFields,
-    nested_fields: dict[str, dict[str, FieldInfo]] | None = None,
+    root_model: type[BaseModel],
     position: CommentPosition = "end_of_line",
-    root_model: type[BaseModel] | None = None,
 ) -> str:
     """Insert field comments into a pretty-printed JSON document."""
     lines = json_string.split("\n")
     result_lines: list[str] = []
-    stack: list[JsonContext] = [("object", model_fields, root_model)]
+    stack: list[JsonContext] = [("object", root_model)]
 
     for line in lines:
         match = KEY_PATTERN.match(line)
         if match:
             indentation = match.group(1)
             key = json.loads(f'"{match.group(2)}"')
+            current_model = stack[-1][1] if stack else None
 
-            field = None
-            child_fields = None
-            child_model = None
-            current_fields = stack[-1][1] if stack else None
-            current_model = stack[-1][2] if stack else None
-            if stack and stack[-1][0] == "object" and current_fields is not None:
-                field = current_fields.get(key)
-                if field is not None:
-                    child_model = unwrapped_model(field.annotation, current_model)
-                    child_fields = child_model.model_fields if child_model is not None else None
-                    if child_fields is None and len(stack) == 1 and nested_fields is not None:
-                        child_fields = nested_fields.get(key)
-
-            comment = get_comment(field, fmt="json") if field is not None else None
+            comment, child_model = _resolve_jsonc_comment(key, current_model)
             if comment:
                 if position == "end_of_line":
                     result_lines.append(f"{line.rstrip()} // {comment}")
@@ -93,18 +59,32 @@ def insert_jsonc_comments(
                 apply_structural_char(
                     stack,
                     char,
-                    child_fields,
                     child_model,
                     not seen_value_open,
                 )
                 seen_value_open = True
         else:
             for char in structural_chars(line):
-                apply_structural_char(stack, char, None, None, is_value_open=False)
+                apply_structural_char(stack, char, None, is_value_open=False)
 
             result_lines.append(line)
 
     return "\n".join(result_lines)
+
+
+def _resolve_jsonc_comment(
+    key: str,
+    current_model: type[BaseModel] | None,
+) -> tuple[str | None, type[BaseModel] | None]:
+    if current_model is None:
+        return None, None
+
+    spec = get_model_plan(current_model).by_key.get(key)
+    if spec is None:
+        return None, None
+
+    child_model = spec.nested_models[0] if len(spec.nested_models) == 1 else None
+    return spec.get_comment(fmt="json"), child_model
 
 
 def structural_chars(line: str, start: int = 0) -> list[str]:
@@ -125,6 +105,7 @@ def structural_chars(line: str, start: int = 0) -> list[str]:
             in_string = True
         elif char in "{[]}":
             chars.append(char)
+
         i += 1
 
     return chars
@@ -133,27 +114,76 @@ def structural_chars(line: str, start: int = 0) -> list[str]:
 def apply_structural_char(
     stack: list[JsonContext],
     char: str,
-    open_fields: ModelFields | None,
     open_model: type[BaseModel] | None,
     is_value_open: bool,
 ) -> None:
     """Update JSON context while walking a structural character."""
     if char == "{":
         if is_value_open:
-            stack.append(("object", open_fields, open_model))
+            stack.append(("object", open_model))
         elif stack and stack[-1][0] == "array":
-            stack.append(("object", stack[-1][1], stack[-1][2]))
+            stack.append(("object", stack[-1][1]))
     elif char == "[":
-        if is_value_open:
-            array_fields = open_fields
-        elif stack and stack[-1][0] == "array":
-            array_fields = stack[-1][1]
-        else:
-            array_fields = None
-        array_model = open_model if is_value_open else (stack[-1][2] if stack else None)
-        stack.append(("array", array_fields, array_model))
+        array_model = open_model if is_value_open else (stack[-1][1] if stack else None)
+        stack.append(("array", array_model))
     elif char in "}]" and stack:
         stack.pop()
 
 
-__all__ = ["CommentPosition", "insert_jsonc_comments", "load", "render"]
+class JSONC:
+    name = "jsonc"
+    extensions = (".jsonc",)
+
+    def __init__(self, encoding: str = "utf-8-sig") -> None:
+        self.encoding = encoding
+
+    def decode(self, data: bytes) -> Mapping[str, Any]:
+        text = decode_utf8_sig(data) if self.encoding == "utf-8-sig" else data.decode(self.encoding)
+        if not text.strip():
+            raise MalformedDocumentError("JSONC document cannot be empty")
+
+        try:
+            document = jsonc.loads(
+                text,
+                object_pairs_hook=reject_duplicate_keys,
+                parse_constant=reject_nonfinite,
+                parse_float=reject_nonfinite,
+            )
+        except MalformedDocumentError:
+            raise
+        except (IndexError, json.JSONDecodeError, ValueError, TypeError):
+            pass
+        else:
+            if not isinstance(document, Mapping):
+                raise MalformedDocumentError("JSONC document root must be a mapping")
+
+            return document
+
+        raise MalformedDocumentError("Invalid JSONC document")
+
+    def encode(
+        self, document: Mapping[str, Any], *, plan: ModelPlan | None, options: RenderOptions
+    ) -> bytes:
+        serialized = serialize_value(dict(document), options.serialize_unsupported)
+        text = json.dumps(serialized, indent=options.indent, default=json_default, allow_nan=False)
+        if options.comments and plan is not None:
+            text = insert_jsonc_comments(
+                text,
+                plan.model,
+                position=options.comment_position,
+            )
+
+        return text.encode("utf-8")
+
+    def locate(self, decoded: Mapping[str, Any], path: Sequence[str]) -> ValueLocation | None:
+        return json_location(decoded, path)
+
+    def edit(self, data: bytes, path: Sequence[str], value: ConfigValue) -> bytes:
+        self.decode(data)
+        result = edit_jsonc_bytes(data, path, value)
+        self.decode(result)
+
+        return result
+
+
+__all__ = ["JSONC", "CommentPosition", "insert_jsonc_comments"]

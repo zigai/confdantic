@@ -32,7 +32,7 @@ def test_load_json_encoding_forwarded(tmp_path):
 
     filepath = tmp_path / "latin1.json"
     filepath.write_bytes('{"name": "Jos\xe9"}'.encode("latin-1"))
-    model = EncModel.load(str(filepath), encoding="latin-1")
+    model = EncModel.load_json(str(filepath), encoding="latin-1")
     assert model.name == "José"
 
 

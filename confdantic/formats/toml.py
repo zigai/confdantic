@@ -1,51 +1,21 @@
 from __future__ import annotations
 
-from pathlib import Path
-from typing import Any
+from collections.abc import Mapping, Sequence
+from typing import TYPE_CHECKING, Any
 
 import tomlkit
-from pydantic import BaseModel
-from pydantic.fields import FieldInfo
-from tomlkit.items import AoT, Array, Item, Table
+import tomlkit.exceptions
+from tomlkit.container import Container
+from tomlkit.items import AbstractTable, AoT, Array, Item, Table
 
-from confdantic.annotations import unwrapped_model
-from confdantic.comments import get_comment
+from confdantic.errors import InvalidKeyPathError, MalformedDocumentError
+from confdantic.formats.base import RenderOptions, ValueLocation
+from confdantic.io import decode_utf8_sig
+from confdantic.plan import get_model_plan
 from confdantic.values import ConfigValue, serialize_value
 
-
-def load(path: Path) -> Any:  # noqa: ANN401 - parsed TOML is a dynamic boundary.
-    return tomlkit.loads(path.read_text(encoding="utf-8-sig"))
-
-
-def render(
-    data: ConfigValue,
-    model: type[BaseModel],
-    comments: bool,
-    serialize_unsupported: bool,
-) -> str:
-    serialized = serialize_value(data, serialize_unsupported)
-    if not isinstance(serialized, dict):  # pragma: no cover - render input is always a model dump.
-        raise TypeError("TOML rendering requires a mapping")
-
-    document = tomlkit.loads(tomlkit.dumps(serialized))
-    if not comments:
-        return tomlkit.dumps(document)
-
-    for name, field in model.model_fields.items():
-        try:
-            item = document.item(name)
-        except KeyError:
-            continue
-
-        comment = get_comment(field, fmt="toml")
-        if comment:
-            set_comment(item, comment)
-
-        subitem = document[name]
-        if isinstance(subitem, Item):
-            add_nested_comments(field, subitem, model)
-
-    return tomlkit.dumps(document)
+if TYPE_CHECKING:
+    from confdantic.plan import ModelPlan
 
 
 def set_comment(item: Item, comment: str) -> None:
@@ -56,36 +26,115 @@ def set_comment(item: Item, comment: str) -> None:
         item.comment(comment)
 
 
-def add_nested_comments(
-    field: FieldInfo,
-    item: Item,
-    owner_model: type[BaseModel],
-) -> None:
-    nested_model = unwrapped_model(field.annotation, owner_model)
-    if nested_model is None:
-        return
-
-    if isinstance(item, (Array, AoT)):
-        for subitem in item:
-            if isinstance(subitem, Table):
-                add_nested_comments(field, subitem, owner_model)
-
-        return
-
-    if not isinstance(item, Table):
-        return
-
-    for subfield_name, subfield in nested_model.model_fields.items():
+def _add_plan_comments(document: Any, plan: ModelPlan) -> None:  # noqa: ANN401
+    for key, spec in plan.by_key.items():
         try:
-            subitem = item.item(subfield_name)
+            item = document.item(key)
         except KeyError:
             continue
 
-        comment = get_comment(subfield, fmt="toml")
+        comment = spec.get_comment(fmt="toml")
         if comment:
-            set_comment(subitem, comment)
+            set_comment(item, comment)
 
-        add_nested_comments(subfield, subitem, nested_model)
+        if len(spec.nested_models) == 1:
+            child_plan = get_model_plan(spec.nested_models[0])
+            child = document[key]
+            if isinstance(child, (Array, AoT)):
+                for entry in child:
+                    if isinstance(entry, Table):
+                        _add_plan_comments(entry, child_plan)
+            elif isinstance(child, Table):
+                _add_plan_comments(child, child_plan)
 
 
-__all__ = ["load", "render"]
+def _get_child(mapping: Any, key: str) -> Any:  # noqa: ANN401
+    if isinstance(mapping, (Container, AbstractTable)):
+        return mapping.item(key) if key in mapping else None
+
+    if isinstance(mapping, Mapping):
+        return mapping.get(key)
+    if isinstance(mapping, (list, Array, AoT)) and key.isdigit() and int(key) < len(mapping):
+        return mapping[int(key)]
+    return None
+
+
+class TOML:
+    name = "toml"
+    extensions = (".toml", ".tml")
+
+    def decode(self, data: bytes) -> Mapping[str, Any]:
+        try:
+            doc = tomlkit.loads(decode_utf8_sig(data))
+        except (tomlkit.exceptions.TOMLKitError, TypeError, ValueError, IndexError):
+            pass
+        else:
+            return doc
+
+        raise MalformedDocumentError("Invalid TOML document")
+
+    def encode(
+        self, document: Mapping[str, Any], *, plan: ModelPlan | None, options: RenderOptions
+    ) -> bytes:
+        serialized = _without_none(serialize_value(dict(document), options.serialize_unsupported))
+        if not isinstance(serialized, dict):
+            raise TypeError("TOML encoding requires a mapping")
+
+        output = tomlkit.loads(tomlkit.dumps(serialized))
+        if options.comments and plan is not None:
+            _add_plan_comments(output, plan)
+
+        return tomlkit.dumps(output).encode("utf-8")
+
+    def locate(self, decoded: Mapping[str, Any], path: Sequence[str]) -> ValueLocation | None:
+        if not path:
+            return None
+
+        current: Any = decoded
+        for segment in path:
+            value = _get_child(current, segment)
+            if value is None:
+                return None
+
+            current = value
+        raw = (
+            current.as_string().strip()
+            if isinstance(current, Item) and not isinstance(current, str)
+            else str(current)
+        )
+
+        return ValueLocation(None, raw)
+
+    def edit(self, data: bytes, path: Sequence[str], value: ConfigValue) -> bytes:
+        if not path:
+            raise InvalidKeyPathError("Invalid empty key path")
+
+        doc = self.decode(data)
+        current: Any = doc
+        for segment in path[:-1]:
+            if segment not in current:
+                current[segment] = tomlkit.table()
+            elif not isinstance(current[segment], Mapping):
+                raise InvalidKeyPathError(
+                    f"Cannot traverse non-object at segment '{segment}' in key path"
+                )
+
+            current = current[segment]
+
+        current[path[-1]] = value
+
+        return tomlkit.dumps(doc).encode("utf-8")
+
+
+def _without_none(value: Any) -> Any:  # noqa: ANN401
+    # TOML has no null, so unset optional values are left out.
+    if isinstance(value, dict):
+        return {key: _without_none(child) for key, child in value.items() if child is not None}
+
+    if isinstance(value, list):
+        return [_without_none(child) for child in value]
+
+    return value
+
+
+__all__ = ["TOML"]

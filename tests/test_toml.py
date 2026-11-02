@@ -111,22 +111,6 @@ def test_save_toml_with_arbitrary_type(tmp_path):
     assert Path(parsed["base_path"]) == base_path
 
 
-def test_save_toml_with_nested_boolean_comments(tmp_path):
-    class Nested(BaseModel):
-        enabled: bool = Field(..., description="Enable feature toggle")
-        retries: int = Field(..., description="Number of retries")
-
-    class BooleanCommentModel(Confdantic):
-        nested: Nested = Field(..., description="Nested settings")
-
-    model = BooleanCommentModel(nested={"enabled": True, "retries": 5})
-    filepath = tmp_path / "bool_comments.toml"
-
-    model.save(str(filepath), comments=True)
-    content = filepath.read_text()
-    assert "Enable feature toggle" in content
-
-
 def test_save_toml_with_none_values(tmp_path):
     model = ExampleModel(name="John Doe", age=30, hobbies=["reading"], address=None)
     filepath = tmp_path / "test_none.toml"

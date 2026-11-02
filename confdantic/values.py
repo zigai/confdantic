@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import PurePath
 from typing import Any, TypeAlias
 
+from pydantic import SecretBytes, SecretStr
 from pydantic_core import to_jsonable_python
 
 ConfigScalar: TypeAlias = "bool | int | float | str | PurePath | None"
@@ -23,6 +24,20 @@ def stringify_unsupported(value: ConfigValue) -> str:
     return str(value)
 
 
+def reveal_secrets(value: Any) -> Any:  # noqa: ANN401 - model dumps hold arbitrary values.
+    """Replace `SecretStr`/`SecretBytes` with their values, for files the program writes."""
+    if isinstance(value, (SecretStr, SecretBytes)):
+        return value.get_secret_value()
+
+    if isinstance(value, dict):
+        return {key: reveal_secrets(item) for key, item in value.items()}
+
+    if isinstance(value, (list, tuple)):
+        return [reveal_secrets(item) for item in value]
+
+    return value
+
+
 def json_default(value: Any) -> str:  # noqa: ANN401 - json passes arbitrary unsupported values.
     """Encode supported path values and reject every other unsupported JSON value."""
     if isinstance(value, PurePath):
@@ -34,4 +49,4 @@ def json_default(value: Any) -> str:  # noqa: ANN401 - json passes arbitrary uns
     )
 
 
-__all__ = ["ConfigScalar", "ConfigValue", "json_default", "serialize_value"]
+__all__ = ["ConfigScalar", "ConfigValue", "json_default", "reveal_secrets", "serialize_value"]

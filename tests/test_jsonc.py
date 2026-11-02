@@ -4,7 +4,6 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 from confdantic import Confdantic
-from confdantic.formats.jsonc import insert_jsonc_comments
 from tests.models import ExampleModel
 
 
@@ -14,20 +13,6 @@ def test_load_jsonc(tmp_path, sample_data):
         // This is a comment
         "name": "John Doe",
         "age": 30, /* inline comment */
-        "hobbies": ["reading", "cycling"],
-        "address": "123 Main St"
-    }"""
-    filepath.write_text(content)
-
-    model = ExampleModel.load(str(filepath))
-    assert model.model_dump() == sample_data
-
-
-def test_load_json5(tmp_path, sample_data):
-    filepath = tmp_path / "test.json5"
-    content = """{
-        "name": "John Doe",
-        "age": 30,
         "hobbies": ["reading", "cycling"],
         "address": "123 Main St"
     }"""
@@ -80,10 +65,9 @@ def test_save_jsonc_comment_position_above(tmp_path, sample_data):
 
     content = filepath.read_text()
     lines = content.split("\n")
-    for i, line in enumerate(lines):
-        if "// Name field" in line:
-            assert '"name"' in lines[i + 1]
-            break
+    comment_lines = [i for i, line in enumerate(lines) if line.strip() == "// Name field"]
+    assert comment_lines
+    assert '"name"' in lines[comment_lines[0] + 1]
 
 
 def test_save_jsonc_with_nested_comments(tmp_path):
@@ -130,23 +114,6 @@ def test_jsonc_round_trip(tmp_path):
     loaded = RoundTripModel.load(str(filepath))
     assert loaded.name == original.name
     assert loaded.value == original.value
-
-
-def test_save_json5_extension(tmp_path, sample_data):
-    class SimpleModel(Confdantic):
-        name: str = Field(..., description="Name field")
-        age: int
-
-    model = SimpleModel(**sample_data)
-    filepath = tmp_path / "test.json5"
-    model.save(str(filepath), comments=True)
-
-    content = filepath.read_text()
-    assert "// Name field" in content
-
-    loaded = SimpleModel.load(str(filepath))
-    assert loaded.name == sample_data["name"]
-    assert loaded.age == sample_data["age"]
 
 
 def test_save_jsonc_with_braces_in_string_values(tmp_path):
@@ -263,26 +230,6 @@ def test_save_jsonc_with_optional_nested_comments(tmp_path):
     content = filepath.read_text()
     assert '"nested": { // Optional nested config' in content
     assert '"retries": 5 // Number of retries' in content
-
-
-def test_insert_jsonc_comments_legacy_nested_fields(tmp_path):
-    class LegacyModel(Confdantic):
-        sub: dict = Field(default_factory=dict, description="Sub desc")
-
-    nested_fields = {"sub": {"x": Field(1, description="X desc")}}
-    json_string = json.dumps({"sub": {"x": 1}}, indent=4)
-
-    out = insert_jsonc_comments(json_string, LegacyModel.model_fields, nested_fields)
-    assert '"x": 1 // X desc' in out
-
-    # Original positional argument order must keep working.
-    out = insert_jsonc_comments(json_string, LegacyModel.model_fields, nested_fields, "above_field")
-    assert "// X desc" in out
-    assert '"x": 1' in out
-
-    # Without nested_fields the fill-in tree is not present.
-    out = insert_jsonc_comments(json_string, LegacyModel.model_fields)
-    assert "X desc" not in out
 
 
 def test_save_jsonc_with_recursive_model_comments(tmp_path):

@@ -1,91 +1,124 @@
 from __future__ import annotations
 
-from collections.abc import Sequence
-from types import UnionType
-from typing import Annotated, ForwardRef, TypeAlias, Union, get_args, get_origin
+from collections.abc import Mapping, Sequence
+from types import NoneType
+from typing import Any, TypeAlias, get_args, get_origin
 
-from objinspect.typing import get_literal_choices, is_direct_literal
-from pydantic import BaseModel
-from pydantic.fields import FieldInfo
+from pydantic import BaseModel, SecretBytes, SecretStr
+from typing_inspection import typing_objects
+from typing_inspection.introspection import get_literal_values, is_union_origin
 
 from confdantic.values import ConfigValue
 
 AnnotationValue: TypeAlias = "ConfigValue | type | None"
-ModelFields: TypeAlias = dict[str, FieldInfo]
+
+SEQUENCE_ORIGINS: tuple[object, ...] = (list, Sequence, set, frozenset, tuple)
+MAPPING_ORIGINS: tuple[object, ...] = (dict, Mapping)
 
 
-def base_model_annotation(annotation: AnnotationValue) -> type[BaseModel] | None:
-    try:
-        if isinstance(annotation, type) and issubclass(annotation, BaseModel):
-            return annotation
-    except TypeError:
-        return None
+def unwrap_optional(annotation: object) -> object:
+    """Strip `Annotated` and `X | None` wrappers that do not change a field's shape."""
+    origin = get_origin(annotation)
+    if typing_objects.is_annotated(origin):
+        return unwrap_optional(get_args(annotation)[0])
+
+    if is_union_origin(origin):
+        args = tuple(arg for arg in get_args(annotation) if arg is not NoneType)
+        return unwrap_optional(args[0]) if len(args) == 1 else annotation
+
+    return annotation
+
+
+def extract_nested_models(  # noqa: C901
+    annotation: Any,  # noqa: ANN401
+    owner_model: type[BaseModel] | None = None,
+) -> tuple[type[BaseModel], ...]:
+    """Return every model reachable through unions, sequences, and mapping values."""
+    models: list[type[BaseModel]] = []
+
+    def collect(value: Any) -> None:  # noqa: ANN401, C901
+        if isinstance(value, str):
+            if owner_model is not None and value == owner_model.__name__:
+                models.append(owner_model)
+
+            return
+
+        if typing_objects.is_forwardref(value):
+            collect(value.__forward_arg__)
+            return
+
+        origin = get_origin(value)
+        if typing_objects.is_annotated(origin):
+            collect(get_args(value)[0])
+        elif is_union_origin(origin) or origin in SEQUENCE_ORIGINS:
+            for arg in get_args(value):
+                if arg is not NoneType and arg is not Ellipsis:
+                    collect(arg)
+        elif origin in MAPPING_ORIGINS:
+            args = get_args(value)
+            if len(args) > 1:
+                collect(args[1])
+        elif isinstance(value, type) and issubclass(value, BaseModel):
+            models.append(value)
+
+    collect(annotation)
+
+    return tuple(dict.fromkeys(models))
+
+
+def is_sequence_type(annotation: object) -> bool:
+    return get_origin(unwrap_optional(annotation)) in SEQUENCE_ORIGINS
+
+
+def is_mapping_type(annotation: object) -> bool:
+    return get_origin(unwrap_optional(annotation)) in MAPPING_ORIGINS
+
+
+def entry_type(annotation: object) -> Any:  # noqa: ANN401
+    """Return the value type of a mapping or homogeneous sequence annotation."""
+    inner = unwrap_optional(annotation)
+    origin = get_origin(inner)
+    args = get_args(inner)
+    if origin in MAPPING_ORIGINS:
+        return args[1] if len(args) == 2 else None
+
+    if origin is tuple:
+        return args[0] if len(args) == 2 and args[1] is Ellipsis else None
+
+    if origin in SEQUENCE_ORIGINS:
+        return args[0] if len(args) == 1 else None
 
     return None
 
 
-def unwrapped_model(
-    annotation: AnnotationValue,
-    owner_model: type[BaseModel] | None = None,
-) -> type[BaseModel] | None:
-    """Resolve a model class from a direct, optional, annotated, or collection annotation."""
-    if isinstance(annotation, str):
-        model = (
-            owner_model if owner_model is not None and annotation == owner_model.__name__ else None
-        )
-    elif isinstance(annotation, ForwardRef):
-        model = unwrapped_model(annotation.__forward_arg__, owner_model)
-    elif get_origin(annotation) is Annotated:
-        args = get_args(annotation)
-        model = unwrapped_model(args[0], owner_model) if args else None
-    elif get_origin(annotation) in (Union, UnionType):
-        args = tuple(arg for arg in get_args(annotation) if arg is not type(None))
-        model = unwrapped_model(args[0], owner_model) if len(args) == 1 else None
-    elif get_origin(annotation) in (list, set, frozenset, Sequence):
-        args = get_args(annotation)
-        model = unwrapped_model(args[0], owner_model) if len(args) == 1 else None
-    elif get_origin(annotation) is tuple:
-        args = get_args(annotation)
-        if len(args) == 1 or (len(args) == 2 and args[1] is Ellipsis):
-            model = unwrapped_model(args[0], owner_model)
-        else:
-            model = None
-    else:
-        model = base_model_annotation(annotation)
+def is_secret_type(annotation: object) -> bool:
+    if get_origin(annotation) is not None:
+        return any(is_secret_type(arg) for arg in get_args(annotation))
 
-    return model
+    return isinstance(annotation, type) and issubclass(annotation, (SecretStr, SecretBytes))
 
 
-def nested_model_fields(
-    annotation: AnnotationValue,
-    owner_model: type[BaseModel] | None = None,
-) -> ModelFields | None:
-    model = unwrapped_model(annotation, owner_model)
-    return model.model_fields if model is not None else None
-
-
-def literal_choices(annotation: AnnotationValue) -> tuple[object, ...] | None:
+def literal_choices(annotation: object) -> tuple[object, ...] | None:
     """Return choices from a literal or union of literals, including an optional null choice."""
-    if is_direct_literal(annotation):
-        return tuple(get_literal_choices(annotation))
-
     origin = get_origin(annotation)
-    if origin is not Union and origin is not UnionType:
+    if typing_objects.is_literal(origin):
+        return tuple(get_literal_values(annotation))
+
+    if not is_union_origin(origin):
         return None
 
     args = get_args(annotation)
-    has_none = any(arg is type(None) for arg in args)
     choices: list[object] = []
     for arg in args:
-        if arg is type(None):
+        if arg is NoneType:
             continue
 
-        if not is_direct_literal(arg):
+        if not typing_objects.is_literal(get_origin(arg)):
             return None
 
-        choices.extend(get_literal_choices(arg))
+        choices.extend(get_literal_values(arg))
 
-    if has_none:
+    if NoneType in args:
         choices.append(None)
 
     return tuple(choices)
@@ -93,9 +126,11 @@ def literal_choices(annotation: AnnotationValue) -> tuple[object, ...] | None:
 
 __all__ = [
     "AnnotationValue",
-    "ModelFields",
-    "base_model_annotation",
+    "entry_type",
+    "extract_nested_models",
+    "is_mapping_type",
+    "is_secret_type",
+    "is_sequence_type",
     "literal_choices",
-    "nested_model_fields",
-    "unwrapped_model",
+    "unwrap_optional",
 ]

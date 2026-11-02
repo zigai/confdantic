@@ -98,7 +98,7 @@ spell: _require-uv
   uv run --group dev codespell
 
 # run all quality checks
-check: lint coverage typecheck spell
+check: lint test coverage typecheck spell
   uv run --group dev ruff format --check .
 
 # list available recipes

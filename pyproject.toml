@@ -8,11 +8,13 @@ license-files = ["LICENSE"]
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
+    "filelock>=3",
     "json-with-comments>=1.0.0",
-    "objinspect>=0.4.3",
+    "platformdirs>=4.0.0",
     "pydantic>=2.12.3",
-    "ruamel-yaml>=0.18.6",
+    "ruamel-yaml>=0.18.15",
     "tomlkit>=0.12.3",
+    "typing-inspection>=0.4.2",
 ]
 
 classifiers = [
@@ -38,7 +40,6 @@ keywords = [
     "yaml",
     "toml",
     "jsonc",
-    "json5",
     "pydantic",
     "pydantic-config",
     "pydantic-config-file",
@@ -52,15 +53,22 @@ keywords = [
 ]
 
 [project.optional-dependencies]
-test = ["pytest>=9.0.3", "coverage>=7.14.1"]
-dev = [
+test = [
     "pytest>=9.0.3",
     "coverage>=7.14.1",
-    "ruff==0.16.1",
+    "pyyaml>=6.0.1",
+    "hypothesis>=6",
+    "jsonschema>=4",
+]
+dev = [
+    "pyyaml>=6.0.1",
+    "pytest>=9.0.3",
+    "coverage>=7.14.1",
+    "ruff==0.16.10",
     "pre-commit>=4.6.0",
     "pyrefly>=1.0.0",
     "codespell>=2.4.2",
-    "rattle-lint>=2.5.1",
+    "rattle-lint>=3.4.0",
 ]
 
 [project.urls]
@@ -266,5 +274,11 @@ convention = "google"
 default-groups = ["test"]
 
 [dependency-groups]
-test = ["pytest>=9.0.3", "coverage>=7.14.1"]
-dev = [{include-group = "test"}, "ruff==0.16.1", "pre-commit>=4.6.0", "pyrefly>=1.0.0", "codespell>=2.4.2", "rattle-lint>=2.5.1"]
+test = [
+    "pytest>=9.0.3",
+    "coverage>=7.14.1",
+    "pyyaml>=6.0.1",
+    "hypothesis>=6",
+    "jsonschema>=4",
+]
+dev = [{include-group = "test"}, "ruff==0.16.10", "pre-commit>=4.6.0", "pyrefly>=1.0.0", "codespell>=2.4.2", "rattle-lint>=3.4.0"]

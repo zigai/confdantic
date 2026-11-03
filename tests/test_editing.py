@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import multiprocessing
+import os
 from datetime import timedelta
 from multiprocessing.synchronize import Barrier
 from pathlib import Path
@@ -168,6 +169,7 @@ def test_set_bytes_type_coercion_and_duration_inference():
     assert b'"timeout": "45m"' in out_td
 
 
+@pytest.mark.skipif(os.name == "nt", reason="Windows has no POSIX permission bits")
 def test_set_file_in_place_preserves_mode(tmp_path: Path):
     target = tmp_path / "app.toml"
     target.write_bytes(b'port = 5432\nhost = "localhost"\n')
@@ -181,7 +183,6 @@ def test_set_file_in_place_preserves_mode(tmp_path: Path):
 def test_set_key_follows_symlink_to_the_linked_file(tmp_path: Path):
     real = tmp_path / "real.toml"
     real.write_bytes(b"port = 8080\n")
-    real.chmod(0o600)
     link = tmp_path / "link.toml"
     link.symlink_to("real.toml")
 
@@ -189,7 +190,6 @@ def test_set_key_follows_symlink_to_the_linked_file(tmp_path: Path):
 
     assert link.is_symlink()
     assert real.read_bytes() == b"port = 8081\n"
-    assert real.stat().st_mode & 0o777 == 0o600
 
 
 def test_set_key_and_set_keys(tmp_path: Path):

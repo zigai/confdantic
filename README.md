@@ -1,104 +1,137 @@
 # confdantic
 
-[![Tests](https://github.com/zigai/confdantic/actions/workflows/tests.yml/badge.svg)](https://github.com/zigai/confdantic/actions/workflows/tests.yml)
-[![PyPI version](https://badge.fury.io/py/confdantic.svg)](https://badge.fury.io/py/confdantic)
-![Supported versions](https://img.shields.io/badge/python-3.11+-blue.svg)
-[![Downloads](https://static.pepy.tech/badge/confdantic)](https://pepy.tech/project/confdantic)
-[![license](https://img.shields.io/github/license/zigai/confdantic.svg)](https://github.com/zigai/confdantic/blob/master/LICENSE)
+**Configuration for Pydantic that remembers where every value came from.**
 
-`Confdantic` is a Python library that enhances Pydantic's capabilities for working with JSON, YAML, and TOML formats by preserving field descriptions as comments when serializing to YAML or TOML.
+confdantic fills a Pydantic model from config files, environment variables, and CLI flags, and tells you where each value came from.
+
+[![Tests](https://img.shields.io/github/actions/workflow/status/zigai/confdantic/tests.yml?branch=master&label=Tests)](https://github.com/zigai/confdantic/actions/workflows/tests.yml)
+[![PyPI](https://img.shields.io/pypi/v/confdantic?color=blue)](https://pypi.org/project/confdantic/)
+[![License](https://img.shields.io/github/license/zigai/confdantic)](LICENSE)
+
+- **One model:** Pydantic validates every layer.
+- **Layers:** files, environment variables, and flags each override the one below.
+- **Provenance:** ask which file set any value.
+- **Safe edits:** change a key and keep the file's comments.
 
 ## Installation
-
-### Using pip
-
-```sh
-pip install confdantic
-```
-
-### Using uv
 
 ```sh
 uv add confdantic
 ```
 
-### From source
+Requires Python 3.11 or newer.
 
-```sh
-pip install git+https://github.com/zigai/confdantic.git
-# or
-uv add git+https://github.com/zigai/confdantic.git
-```
-
-## Example
+## Quick start
 
 ```python
-from typing import Literal
-from pydantic import Field
-from confdantic import Confdantic
+from pydantic import BaseModel
+
+from confdantic import load
 
 
-class DatabaseConfig(Confdantic):
-    host: str = Field(
-        "localhost",
-        description="The hostname or IP address of the database server",
-    )
-    port: int = Field(
-        5432,
-        description="The port number on which the database server is listening.",
-    )
-    username: str
-    password: str
+class Config(BaseModel):
+    host: str = "127.0.0.1"
+    port: int = 8080
 
 
-class ApplicationConfig(Confdantic):
-    debug: bool = Field(False, description="Enable debug mode")
-    log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = Field(
-        "INFO", description="Logging level"
-    )
-    database: DatabaseConfig
-    allowed_hosts: list[str] = Field(
-        default_factory=list,
-        description="A list of host/domain names that this application can serve.",
-    )
+config = load(Config, "config.toml", formats=("toml",))
+print(f"listening on {config.host}:{config.port}")
+```
 
+With `port = 9000` in `config.toml`:
 
-config = ApplicationConfig(
-    database=DatabaseConfig(username="admin", password="secret"),
-    allowed_hosts=["example.com"],
+```text
+listening on 127.0.0.1:9000
+```
+
+## How the layers stack
+
+```text
+  CLI flags        contributions=[...]   ← wins
+  Environment      MYAPP_PORT=9050
+  Config file      ./config.toml
+  User file        ~/.config/myapp/config.toml
+  System file      /etc/xdg/myapp/config.toml
+  Defaults         the model's defaults  ← fallback
+```
+
+Each layer is one argument:
+
+```python
+from confdantic import Contribution
+
+flags = Contribution({"port": 9100}, paths={"port": "--port"})
+config = load(
+    Config, app_name="myapp", formats=("toml",), env_prefix="MYAPP", contributions=[flags]
 )
-config.save("config.yaml", comments=True)
-config.save("config.toml", comments=True)
 ```
 
-`config.yaml`
+## Where did this value come from?
 
-```yaml
-debug: false  # Enable debug mode
-log_level: INFO # Logging level | choices: DEBUG, INFO, WARNING, ERROR
-database:
-  host: localhost  # The hostname or IP address of the database server
-  port: 5432 # The port number on which the database server is listening.
-  username: admin
-  password: secret
-allowed_hosts:  # A list of host/domain names that this application can serve.
-  - example.com
+```python
+from confdantic import load_with_metadata
+
+config, meta = load_with_metadata(Config, app_name="myapp", formats=("toml",))
+print(meta.where("port").location())
+# User /home/you/.config/myapp/config.toml
+
+for unknown in meta.unknown_keys:
+    print(unknown)
+# unknown key "prot" (did you mean "port"?)
 ```
 
-`config.toml`
+Pass `strict=True` to make unknown keys an error.
 
-```toml
-debug = false # Enable debug mode
-log_level = "INFO" # Logging level | choices: DEBUG, INFO, WARNING, ERROR
-allowed_hosts = ["example.com"] # A list of host/domain names that this application can serve.
+## Checking values
 
-[database]
-host = "localhost" # The hostname or IP address of the database server
-port = 5432 # The port number on which the database server is listening.
-username = "admin"
-password = "secret"
+For checks across fields, add `validate_config`. Errors point at the layer that set the key:
+
+```python
+from confdantic import Metadata
+
+
+class Config(BaseModel):
+    port: int = 8080
+
+    def validate_config(self, meta: Metadata) -> None:
+        if self.port > 9000:
+            raise meta.error("port", "above the privileged ceiling")
 ```
+
+```text
+config error: above the privileged ceiling for port: "9090"
+  --> set by /home/you/project/config.toml
+```
+
+## Editing config files
+
+`edit` loads one file into your model and writes back only what you change, keeping comments:
+
+```python
+from confdantic import edit
+
+with edit("config.toml", Config) as config:
+    config.database.port = 5433
+```
+
+`save(config, "state.json")` writes a whole model, and `init(Config, "config.toml")` writes a starter file with your defaults. For a `config set` command, `set_key("config.toml", "database.port", "5433", model=Config)` takes the key and value as typed.
+
+## Fields
+
+```python
+from pydantic import SecretStr
+
+from confdantic import Duration, config_field
+
+
+class Config(BaseModel):
+    database_url: str = config_field("sqlite://", key="db_url")
+    api_key: SecretStr = config_field(env="API_KEY")
+    timeout: Duration = Duration(seconds=30)  # "30s", "1h30m", "2w"
+```
+
+Secrets show as `[REDACTED]` in origins and errors.
 
 ## License
 
-[MIT License](https://github.com/zigai/confdantic/blob/master/LICENSE)
+[MIT](LICENSE)

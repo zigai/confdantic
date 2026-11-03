@@ -72,7 +72,6 @@ default-groups = ["test"]
 dependencies = [
     { name = "filelock" },
     { name = "json-with-comments" },
-    { name = "platformdirs" },
     { name = "pydantic" },
     { name = "ruamel-yaml" },
     { name = "tomlkit" },
@@ -132,7 +131,6 @@ requires-dist = [
     { name = "hypothesis", marker = "extra == 'test'", specifier = ">=6" },
     { name = "json-with-comments", specifier = ">=1.0.0" },
     { name = "jsonschema", marker = "extra == 'test'", specifier = ">=4" },
-    { name = "platformdirs", specifier = ">=4.0.0" },
     { name = "pre-commit", marker = "extra == 'dev'", specifier = ">=4.6.0" },
     { name = "pydantic", specifier = ">=2.12.3" },
     { name = "pyrefly", marker = "extra == 'dev'", specifier = ">=1.0.0" },

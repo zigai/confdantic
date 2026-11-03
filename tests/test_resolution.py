@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import io
 import json
+import os
 from datetime import timedelta
 from pathlib import Path
 from typing import Annotated, Any, Literal, Never
@@ -532,6 +533,21 @@ def test_nested_contributions_track_leaf_sources():
 
     with pytest.raises(UnknownKeyError):
         load(Settings, contributions=[Contribution({"database": {"prot": 7}})], environment={})
+
+
+@pytest.mark.parametrize("unset", [{}, {"XDG_CONFIG_HOME": "", "APPDATA": ""}])
+def test_user_file_defaults_to_the_home_config_folder(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, unset: dict[str, str]
+):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("USERPROFILE", str(tmp_path))
+    base = tmp_path / "AppData" / "Roaming" if os.name == "nt" else tmp_path / ".config"
+    (base / "app").mkdir(parents=True)
+    (base / "app" / "config.toml").write_text('host = "home"\n')
+
+    config = load(Settings, app_name="app", formats=("toml",), environment=unset)
+
+    assert config.host == "home"
 
 
 def test_config_edit_path_selection(tmp_path: Path, monkeypatch):

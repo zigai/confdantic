@@ -8,9 +8,9 @@ from pathlib import Path
 from typing import Annotated
 
 import pytest
-from pydantic import BaseModel, BeforeValidator, ConfigDict, create_model
+from pydantic import BaseModel, BeforeValidator, ConfigDict, SecretStr, create_model
 
-from confdantic import Duration, config_field, load, save
+from confdantic import Duration, config_field, edit, load, save
 from confdantic.editing import set_bytes, set_key, set_keys
 from confdantic.errors import (
     ConfigValidationError,
@@ -224,15 +224,11 @@ def test_set_key_with_model_validation(tmp_path: Path):
     assert "port = 5433" in target.read_text()
     assert "# DB port" in target.read_text()
 
-    # 2. Confdantic classmethod
-    ServerConfig.set_key(target, "database.port", 5434)
-    assert "port = 5434" in target.read_text()
-
-    # 3. Unknown config key reports a suggestion.
+    # 2. Unknown config key reports a suggestion.
     with pytest.raises(UnknownKeyError, match=r'did you mean "database\.port"'):
         set_key(target, "database.prt", 5435, model=ServerConfig)
 
-    # 4. Invalid values use Pydantic's message and the config key.
+    # 3. Invalid values use Pydantic's message and the config key.
     with pytest.raises(ConfigValidationError, match=r"valid integer.*for database\.port"):
         set_key(target, "database.port", "not_a_number", model=ServerConfig)
 
@@ -600,3 +596,108 @@ def test_editing_a_missing_file_creates_nothing(tmp_path: Path):
         set_key(target, "port", 1)
 
     assert list(tmp_path.iterdir()) == []
+
+
+class EditDatabase(BaseModel):
+    host: str = "localhost"
+    port: int = config_field(5432, key="db_port")
+
+
+class EditConfig(BaseModel):
+    name: str = "app"
+    retries: int = 3
+    token: SecretStr = config_field(SecretStr(""), env="EDIT_TOKEN")
+    database: EditDatabase = EditDatabase()
+    labels: dict[str, str] = {}
+
+
+EDIT_FILE = """# service settings
+name = "demo" # shown in logs
+
+[database]
+db_port = 5432 # primary
+
+[labels]
+env = "dev"
+team = "core"
+"""
+
+
+@pytest.fixture
+def edit_target(tmp_path: Path) -> Path:
+    target = tmp_path / "config.toml"
+    target.write_text(EDIT_FILE, encoding="utf-8")
+    return target
+
+
+def test_edit_writes_only_the_changed_key_under_its_config_name(edit_target: Path):
+    with edit(edit_target, EditConfig) as config:
+        assert config.name == "demo"
+        config.database.port = 6000
+
+    assert edit_target.read_text() == EDIT_FILE.replace("db_port = 5432", "db_port = 6000")
+
+
+def test_edit_does_not_write_environment_values(edit_target: Path, monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setenv("EDIT_TOKEN", "from-environment")
+
+    with edit(edit_target, EditConfig) as config:
+        assert config.token.get_secret_value() == ""
+        config.retries = 5
+
+    text = edit_target.read_text()
+    assert "retries = 5" in text
+    assert "from-environment" not in text
+
+
+def test_edit_writes_a_changed_secret_in_clear(edit_target: Path):
+    with edit(edit_target, EditConfig) as config:
+        config.token = SecretStr("sample-token")
+
+    assert 'token = "sample-token"' in edit_target.read_text()
+
+
+def test_edit_removes_a_deleted_map_entry(edit_target: Path):
+    with edit(edit_target, EditConfig) as config:
+        del config.labels["team"]
+
+    assert load(EditConfig, edit_target, formats=("toml",)).labels == {"env": "dev"}
+
+
+def test_edit_writes_nothing_when_the_block_raises(edit_target: Path):
+    def change_then_fail() -> None:
+        with edit(edit_target, EditConfig) as config:
+            config.retries = 5
+            raise RuntimeError
+
+    with pytest.raises(RuntimeError):
+        change_then_fail()
+
+    assert edit_target.read_text() == EDIT_FILE
+
+
+def test_edit_rejects_an_invalid_value_without_writing(edit_target: Path):
+    with (
+        pytest.raises(ConfigValidationError, match="retries"),
+        edit(edit_target, EditConfig) as config,
+    ):
+        config.retries = "many"  # pyrefly: ignore[bad-assignment]
+
+    assert edit_target.read_text() == EDIT_FILE
+
+
+def test_edit_keeps_a_change_made_to_another_key_meanwhile(edit_target: Path):
+    with edit(edit_target, EditConfig) as config:
+        set_key(edit_target, "name", "renamed")
+        config.retries = 5
+
+    loaded = load(EditConfig, edit_target, formats=("toml",))
+    assert (loaded.name, loaded.retries) == ("renamed", 5)
+
+
+def test_edit_rejects_a_format_that_cannot_be_edited(tmp_path: Path):
+    target = tmp_path / "config.ini"
+    target.write_text("name = demo\n", encoding="utf-8")
+
+    with pytest.raises(UnsupportedFormatError), edit(target, EditConfig):
+        pass

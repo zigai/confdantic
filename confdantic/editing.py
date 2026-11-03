@@ -1,16 +1,18 @@
 from __future__ import annotations
 
 import csv
-from collections.abc import Mapping
+from collections.abc import Generator, Mapping
+from contextlib import contextmanager
 from datetime import timedelta
 from pathlib import Path
-from typing import Any
+from typing import Any, TypeVar
 
 from pydantic import BaseModel, TypeAdapter, ValidationError
 from pydantic_core import to_jsonable_python
 
 from confdantic.duration import format_duration, parse_duration
 from confdantic.errors import (
+    ConfdanticError,
     ConfigError,
     ConfigValidationError,
     InvalidKeyPathError,
@@ -20,11 +22,14 @@ from confdantic.errors import (
 from confdantic.formats.base import EditableFormat
 from confdantic.formats.registry import select_formats
 from confdantic.keypath import KeyPath, to_key_path
+from confdantic.loader import load
 from confdantic.merge import collect_origins
 from confdantic.persistence import ConfigFile
 from confdantic.plan import ModelPlan, get_model_plan
 from confdantic.provenance import REDACTED, SourceKind
 from confdantic.values import reveal_secrets
+
+M = TypeVar("M", bound=BaseModel)
 
 # bool comes before int because bool is an int subclass.
 SCALAR_ADAPTERS: dict[type, TypeAdapter[Any]] = {
@@ -32,6 +37,26 @@ SCALAR_ADAPTERS: dict[type, TypeAdapter[Any]] = {
     int: TypeAdapter(int),
     float: TypeAdapter(float),
 }
+
+
+@contextmanager
+def edit(path: Path | str, model: type[M]) -> Generator[M]:
+    """Yield `model` loaded from `path` alone, then write back only the keys you changed.
+
+    Defaults and environment variables are not written. Changed values are validated
+    and written in one atomic edit that keeps comments; nothing is written if the
+    block raises.
+    """
+    editor = _editor(Path(path).suffix)
+    config = load(model, path, formats=(editor,), environment={})
+    plan = get_model_plan(model)
+    before = _document(plan, config)
+
+    yield config
+
+    updates: dict[str | KeyPath, Any] = {}
+    _collect_changes(before, _document(plan, config), (), updates)
+    set_keys(path, updates, model=model)
 
 
 def set_key(
@@ -85,6 +110,39 @@ def set_bytes(
 ) -> bytes:
     """Edit one key in a built-in format's bytes; `format` is a name or an extension."""
     return _edit(_editor(format), data, to_key_path(key), value, coerce=True)
+
+
+def _document(plan: ModelPlan, config: BaseModel) -> dict[str, Any]:
+    return reveal_secrets(
+        plan.to_document(
+            # Assigned values are validated when written, so a mismatch here is not a problem.
+            config.model_dump(mode="python", warnings=False),
+            model=config,
+        )
+    )
+
+
+def _collect_changes(
+    before: Mapping[str, Any],
+    after: Mapping[str, Any],
+    prefix: KeyPath,
+    out: dict[str | KeyPath, Any],
+) -> None:
+    if before.keys() - after.keys():
+        # A removed entry can only be written by replacing its whole mapping.
+        if not prefix:
+            raise ConfdanticError(
+                f"Cannot remove top-level keys: {sorted(before.keys() - after.keys())}"
+            )
+        out[prefix] = dict(after)
+        return
+
+    for key, value in after.items():
+        old = before.get(key)
+        if isinstance(old, Mapping) and isinstance(value, Mapping):
+            _collect_changes(old, value, (*prefix, key), out)
+        elif key not in before or old != value:
+            out[(*prefix, key)] = value
 
 
 def _checked_updates(updates: Mapping[KeyPath, Any], model: type[BaseModel]) -> dict[KeyPath, Any]:
@@ -221,4 +279,4 @@ def _coerce_value(existing: Any, value: Any) -> Any:  # noqa: ANN401, PLR0911
     return value
 
 
-__all__ = ["set_bytes", "set_key", "set_keys"]
+__all__ = ["edit", "set_bytes", "set_key", "set_keys"]

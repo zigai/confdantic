@@ -22,6 +22,7 @@ def test_root_export_is_the_canonical_model():
         "save",
         "init",
         "schema",
+        "edit",
         "set_key",
         "set_keys",
         "set_bytes",

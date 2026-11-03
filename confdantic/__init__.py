@@ -3,7 +3,7 @@ from __future__ import annotations
 from confdantic.confdantic import Confdantic
 from confdantic.discovery import config_edit_path
 from confdantic.duration import Duration, parse_duration
-from confdantic.editing import set_bytes, set_key, set_keys
+from confdantic.editing import edit, set_bytes, set_key, set_keys
 from confdantic.env import EnvVar, env_vars
 from confdantic.errors import (
     ConfdanticError,
@@ -50,6 +50,7 @@ __all__ = [
     "UnsupportedFormatError",
     "config_edit_path",
     "config_field",
+    "edit",
     "env_vars",
     "init",
     "load",

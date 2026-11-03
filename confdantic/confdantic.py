@@ -1,19 +1,16 @@
 from __future__ import annotations
 
-from collections.abc import Mapping
 from pathlib import Path, PurePath
 from typing import TYPE_CHECKING, Any, Self
 
 from pydantic import BaseModel, ConfigDict
 from ruamel.yaml.comments import CommentedMap, CommentedSeq
 
-from confdantic.editing import set_key, set_keys
 from confdantic.formats import json as json_format
 from confdantic.formats import jsonc as jsonc_format
 from confdantic.formats import toml as toml_format
 from confdantic.formats import yaml as yaml_format
 from confdantic.formats.base import RenderOptions
-from confdantic.keypath import KeyPath
 from confdantic.loader import load as load_layers
 from confdantic.persistence import atomic_write_bytes, builtin_writer, encode_model
 from confdantic.persistence import init as init_file
@@ -126,16 +123,6 @@ class Confdantic(BaseModel):
     ) -> None:
         options = RenderOptions(comments, serialize_unsupported, comment_position, indent)
         self._write("jsonc", filepath, overwrite, options)
-
-    @classmethod
-    def set_key(cls, filepath: Path | str, key: str | KeyPath, value: Any) -> None:  # noqa: ANN401
-        """Edit a configuration file in-place at `key`, validating against this model."""
-        set_key(filepath, key, value, model=cls)
-
-    @classmethod
-    def set_keys(cls, filepath: Path | str, updates: Mapping[str | KeyPath, Any]) -> None:
-        """Edit multiple keys in a configuration file in-place, validating against this model."""
-        set_keys(filepath, updates, model=cls)
 
     @classmethod
     def init(

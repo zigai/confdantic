@@ -5,10 +5,9 @@ from pydantic import BaseModel, Field
 
 from confdantic import (
     Confdantic,
-    ConfigValidationError,
     Contribution,
-    UnknownKeyError,
     UnsupportedFormatError,
+    set_key,
 )
 from tests.models import ExampleModel
 
@@ -110,8 +109,7 @@ def test_confdantic_init_and_layered_features(tmp_path):
     assert tpl_path.exists()
     assert "port = 8080" in tpl_path.read_text()
 
-    # Classmethod in-place update
-    App.set_key(tpl_path, "port", 9090)
+    set_key(tpl_path, "port", 9090, model=App)
     assert "port = 9090" in tpl_path.read_text()
 
     # Classmethod load with a Path object and a flag contribution
@@ -144,16 +142,3 @@ def test_format_methods_use_their_format_whatever_the_suffix(
         getattr(config, save_name)(target)
         assert marker in target.read_text(encoding="utf-8")
         assert getattr(Server, load_name)(target) == config
-
-
-def test_class_set_key_validates_against_the_class(tmp_path: Path):
-    target = tmp_path / "config.toml"
-    target.write_text("# server\nport = 8080\n", encoding="utf-8")
-    before = target.read_bytes()
-
-    with pytest.raises(ConfigValidationError):
-        Server.set_key(target, "port", "not-a-number")
-    with pytest.raises(UnknownKeyError):
-        Server.set_keys(target, {"port": 1, "prot": 2})
-
-    assert target.read_bytes() == before

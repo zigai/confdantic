@@ -39,6 +39,16 @@ from confdantic import (
 from confdantic.plan import get_model_plan
 
 
+def config_dirs(system: Path, user: Path) -> dict[str, str]:
+    """Point system and user config discovery at these folders on every platform."""
+    return {
+        "XDG_CONFIG_DIRS": str(system),
+        "XDG_CONFIG_HOME": str(user),
+        "ProgramData": str(system),
+        "APPDATA": str(user),
+    }
+
+
 class Database(BaseModel):
     port: int = 5432
 
@@ -304,8 +314,7 @@ def test_file_layer_precedence_and_metadata(tmp_path: Path):
     explicit = tmp_path / "explicit.toml"
     explicit.write_text("http_port = 2\n")
     environment = {
-        "XDG_CONFIG_DIRS": str(tmp_path / "system"),
-        "XDG_CONFIG_HOME": str(tmp_path / "user"),
+        **config_dirs(tmp_path / "system", tmp_path / "user"),
         "APP_DATABASE__PORT": "3",
     }
     config, meta = load_with_metadata(
@@ -527,6 +536,7 @@ def test_nested_contributions_track_leaf_sources():
 
 def test_config_edit_path_selection(tmp_path: Path, monkeypatch):
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+    monkeypatch.setenv("APPDATA", str(tmp_path))
     expected = tmp_path / "app" / "config.yaml"
     assert config_edit_path(app_name="app", formats=("yaml", "toml")) == expected
     expected.parent.mkdir()
@@ -918,8 +928,7 @@ def test_each_layer_overrides_the_layers_below(
     if "explicit" in layers:
         explicit.write_text('host = "explicit"\n')
     environment = {
-        "XDG_CONFIG_DIRS": str(tmp_path / "system"),
-        "XDG_CONFIG_HOME": str(tmp_path / "user"),
+        **config_dirs(tmp_path / "system", tmp_path / "user"),
     }
     if "env" in layers:
         environment["APP_HOST"] = "env"
@@ -957,8 +966,7 @@ def test_nested_tables_merge_across_files_and_lists_replace(tmp_path: Path):
     (system / "config.toml").write_text('[server]\nhost = "system-host"\ntags = ["a", "b"]\n')
     (user / "config.toml").write_text('[server]\nport = 2\ntags = ["c"]\n')
     environment = {
-        "XDG_CONFIG_DIRS": str(tmp_path / "system"),
-        "XDG_CONFIG_HOME": str(tmp_path / "user"),
+        **config_dirs(tmp_path / "system", tmp_path / "user"),
     }
 
     config, meta = load_with_metadata(
@@ -986,7 +994,7 @@ def test_discovery_picks_the_first_selected_format(
         Settings,
         app_name="app",
         formats=formats,
-        environment={"XDG_CONFIG_HOME": str(tmp_path / "user"), "XDG_CONFIG_DIRS": ""},
+        environment=config_dirs(tmp_path / "system", tmp_path / "user"),
     )
 
     assert config.host == expected
@@ -994,7 +1002,7 @@ def test_discovery_picks_the_first_selected_format(
 
 def test_max_file_size_limits_files_and_stdin(tmp_path: Path):
     path = tmp_path / "config.toml"
-    path.write_text('host = "x"\n')
+    path.write_bytes(b'host = "x"\n')
     size = path.stat().st_size
 
     assert load(Settings, path, formats=("toml",), max_file_size=size, environment={}).host == "x"

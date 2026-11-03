@@ -24,6 +24,10 @@ def _first_regular_file(candidates: Iterable[Path]) -> Path | None:
 
 
 def user_root(app_name: str, environment: Mapping[str, str]) -> Path:
+    if os.name == "nt":
+        base = environment.get("APPDATA") or Path.home() / "AppData" / "Roaming"
+        return Path(base) / app_name
+
     if os.name == "posix" and "XDG_CONFIG_HOME" in environment:
         return Path(environment["XDG_CONFIG_HOME"]) / app_name
 
@@ -40,7 +44,9 @@ def discover_user_file(
 def discover_system_file(
     app_name: str, extensions: Sequence[str], environment: Mapping[str, str]
 ) -> Path | None:
-    if os.name == "posix" and "XDG_CONFIG_DIRS" in environment:
+    if os.name == "nt":
+        roots = [Path(environment.get("ProgramData") or "C:\\ProgramData") / app_name]
+    elif os.name == "posix" and "XDG_CONFIG_DIRS" in environment:
         roots = [
             Path(part) / app_name
             for part in environment["XDG_CONFIG_DIRS"].split(os.pathsep)

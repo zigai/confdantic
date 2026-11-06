@@ -59,19 +59,6 @@ uv run pytest -v
 just test
 ```
 
-## Pre-commit Hooks
-
-We use [pre-commit](https://pre-commit.com/) to run quality checks automatically:
-
-```sh
-# Install pre-commit hooks
-uv tool install pre-commit
-pre-commit install
-
-# Run hooks manually on all files
-pre-commit run --all-files
-```
-
 ## Documentation
 
 We follow the [Google docstring format](https://sphinxcontrib-napoleon.readthedocs.io/en/latest/example_google.html) for code documentation. All user-facing classes and functions must be documented with docstrings and type hints.

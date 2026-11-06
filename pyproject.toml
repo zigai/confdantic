@@ -52,21 +52,13 @@ keywords = [
 ]
 
 [project.optional-dependencies]
-test = [
-    "pytest>=9.0.3",
-    "coverage>=7.14.1",
-    "pyyaml>=6.0.1",
-    "hypothesis>=6",
-    "jsonschema>=4",
-]
+test = ["pytest>=9.0.3", "coverage>=7.14.1", "pyyaml>=6.0.1", "hypothesis>=6", "jsonschema>=4"]
 dev = [
     "pyyaml>=6.0.1",
     "pytest>=9.0.3",
     "coverage>=7.14.1",
     "ruff==0.16.10",
-    "pre-commit>=4.6.0",
     "pyrefly>=1.0.0",
-    "codespell>=2.4.2",
     "rattle-lint>=3.4.0",
 ]
 
@@ -86,6 +78,8 @@ module-root = ""
 [tool.coverage.run]
 source = ["confdantic"]
 branch = true
+parallel = true
+patch = ["subprocess"]
 
 [tool.coverage.report]
 exclude_lines = [
@@ -110,9 +104,6 @@ infer-return-types = "checked"
 infer-with-first-use = true
 strict-callable-subtyping = false
 spec-compliant-overloads = false
-
-[tool.codespell]
-skip = '.git,uv.lock'
 
 [tool.rattle]
 root = true
@@ -241,27 +232,20 @@ exclude = ["build"]
 "examples/*.py" = ["INP001"]
 
 [tool.ruff.lint.pep8-naming]
-classmethod-decorators = [
-    "pydantic.validator",
-    "declared_attr",
-    "expression",
-    "comparator",
-]
+classmethod-decorators = ["pydantic.validator", "declared_attr", "expression", "comparator"]
 
 [tool.ruff.lint.flake8-builtins]
 ignorelist = ["id", "input"]
 
 [tool.ruff.lint.flake8-type-checking]
-runtime-evaluated-base-classes = [
-    "pydantic.BaseModel",
-    "sqlalchemy.orm.DeclarativeBase",
-]
+runtime-evaluated-base-classes = ["pydantic.BaseModel", "sqlalchemy.orm.DeclarativeBase"]
 
 [tool.ruff.format]
 quote-style = "double"
 indent-style = "space"
 skip-magic-trailing-comma = false
 line-ending = "lf"
+exclude = []
 
 [tool.ruff.lint.isort]
 known-first-party = ["confdantic", "tests"]
@@ -270,14 +254,16 @@ known-first-party = ["confdantic", "tests"]
 convention = "google"
 
 [tool.uv]
-default-groups = ["test"]
+default-groups = ["dev"]
 
 [dependency-groups]
-test = [
+dev = [
     "pytest>=9.0.3",
     "coverage>=7.14.1",
     "pyyaml>=6.0.1",
     "hypothesis>=6",
     "jsonschema>=4",
+    "ruff==0.16.10",
+    "pyrefly>=1.0.0",
+    "rattle-lint>=3.4.0",
 ]
-dev = [{include-group = "test"}, "ruff==0.16.10", "pre-commit>=4.6.0", "pyrefly>=1.0.0", "codespell>=2.4.2", "rattle-lint>=3.4.0"]
